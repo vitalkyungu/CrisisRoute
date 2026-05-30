@@ -56,3 +56,22 @@ export interface AidRequest {
 }
 
 export type UserRole = "volunteer" | "coordinator";
+
+export interface AgentLog {
+  id: string;
+  timestamp: string;
+  trigger?: string;
+  action?: string;
+  result_summary?: string;
+  full_result?: string;
+  tools_invoked?: string[];
+  tool_call_count?: number;
+}
+
+export interface AgentStatus {
+  pending_requests: number;
+  assigned_missions: number;
+  completed_missions: number;
+  available_volunteers: number;
+  needs_agent_run: boolean;
+}

@@ -5,6 +5,7 @@ import { deleteUser, reauthenticateWithPopup } from "firebase/auth";
 import { auth, db, googleProvider } from "../lib/firebase";
 import { useAuth } from "../hooks/useAuth";
 import type { Volunteer } from "../types";
+import { useNotifications } from "../hooks/useNotifications";
 import { Loader2, Trash2, User, Mail, Globe, MapPin, ArrowLeft } from "lucide-react";
 
 const SKILL_OPTIONS = [

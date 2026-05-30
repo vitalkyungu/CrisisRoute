@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
+import { useNotifications } from "../hooks/useNotifications";
+import { useAuth } from "../hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
 const SKILL_OPTIONS = [
@@ -31,13 +32,14 @@ const LANGUAGE_OPTIONS = [
 ];
 
 export default function ProfileSetup() {
-  const navigate = useNavigate();
+  const { role } = useAuth();
   const [skills, setSkills] = useState<string[]>([]);
   const [languages, setLanguages] = useState<string[]>(["en"]);
   const [preferredLang, setPreferredLang] = useState("en");
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [error, setError] = useState("");
+  const { saveFcmToken } = useNotifications();
 
   const toggleSkill = (skill: string) => {
     setSkills((prev) =>
@@ -106,9 +108,12 @@ export default function ProfileSetup() {
 
       await Promise.race([savePromise, timeoutPromise]);
 
+      setStatusMsg("Enabling notifications...");
+      await saveFcmToken(user.uid);
+
       setStatusMsg("Done!");
       setTimeout(() => {
-        window.location.href = "/volunteer";
+        window.location.href = role === "coordinator" ? "/coordinator" : "/volunteer";
       }, 300);
     } catch (e: any) {
       console.error("Profile save error:", e);

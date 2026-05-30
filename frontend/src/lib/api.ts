@@ -47,7 +47,12 @@ export const api = {
   },
   agent: {
     trigger: () => request<any>("/agent/run", { method: "POST" }),
+    reassign: (missionId: string, reason = "volunteer_declined") =>
+      request<any>(`/agent/reassign/${missionId}?reason=${encodeURIComponent(reason)}`, {
+        method: "POST",
+      }),
     logs: (limit = 50) => request<any[]>(`/agent/logs?limit=${limit}`),
+    status: () => request<any>("/agent/status"),
   },
   alerts: {
     logs: (missionId?: string) =>

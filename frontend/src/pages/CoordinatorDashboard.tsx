@@ -1,24 +1,29 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { api } from "../lib/api";
-import type { Incident, Volunteer, Mission } from "../types";
+import type { Incident, Volunteer, Mission, AidRequest, AgentLog, AgentStatus } from "../types";
 import CoordinatorMap from "../components/CoordinatorMap";
 import {
   AlertTriangle,
   Users,
   Activity,
   Radio,
-  Play,
   RefreshCw,
   Globe,
   Zap,
+  ClipboardList,
+  Bot,
+  Clock,
 } from "lucide-react";
 
 export default function CoordinatorDashboard() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
   const [missions, setMissions] = useState<Mission[]>([]);
+  const [aidRequests, setAidRequests] = useState<AidRequest[]>([]);
+  const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
+  const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [agentRunning, setAgentRunning] = useState(false);
   const [agentResult, setAgentResult] = useState<string>("");
@@ -34,9 +39,31 @@ export default function CoordinatorDashboard() {
       onSnapshot(collection(db, "missions"), (snap) =>
         setMissions(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Mission))
       ),
+      onSnapshot(collection(db, "aid_requests"), (snap) =>
+        setAidRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as AidRequest))
+      ),
     ];
     return () => unsubs.forEach((u) => u());
   }, []);
+
+  const refreshAgentData = useCallback(async () => {
+    try {
+      const [logs, status] = await Promise.all([
+        api.agent.logs(20),
+        api.agent.status(),
+      ]);
+      setAgentLogs(logs);
+      setAgentStatus(status);
+    } catch (e) {
+      console.warn("Failed to load agent data:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshAgentData();
+    const interval = setInterval(refreshAgentData, 15000);
+    return () => clearInterval(interval);
+  }, [refreshAgentData]);
 
   const triggerAgent = async () => {
     setAgentRunning(true);
@@ -44,6 +71,7 @@ export default function CoordinatorDashboard() {
     try {
       const result = await api.agent.trigger();
       setAgentResult(result.summary || "Agent completed");
+      await refreshAgentData();
     } catch (e: any) {
       setAgentResult(`Error: ${e.message}`);
     } finally {
@@ -61,6 +89,15 @@ export default function CoordinatorDashboard() {
     (m) => !["completed", "cancelled"].includes(m.status)
   );
   const completedMissions = missions.filter((m) => m.status === "completed");
+  const openAidRequests = aidRequests.filter((r) => r.status === "open");
+
+  const urgencyBadge = (urgency: string) => {
+    switch (urgency) {
+      case "critical": return "badge-critical";
+      case "urgent": return "badge-urgent";
+      default: return "badge-standard";
+    }
+  };
 
   const severityBadge = (severity: string) => {
     switch (severity) {
@@ -80,9 +117,17 @@ export default function CoordinatorDashboard() {
     }
   };
 
+  const formatTime = (iso?: string) => {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return iso;
+    }
+  };
+
   return (
     <div>
-      {/* Header with actions */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Command Center</h1>
@@ -111,7 +156,31 @@ export default function CoordinatorDashboard() {
         </div>
       </div>
 
-      {/* Agent result flash */}
+      {agentStatus && (
+        <div className={`card mb-6 flex flex-wrap items-center gap-4 ${
+          agentStatus.needs_agent_run ? "border-amber-600/50 bg-amber-950/20" : ""
+        }`}>
+          <div className="flex items-center gap-2">
+            <Bot className="w-5 h-5 text-amber-400" />
+            <span className="text-sm font-medium text-slate-200">Agent Status</span>
+          </div>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <span className="text-slate-300">
+              <span className="text-amber-400 font-bold">{agentStatus.pending_requests}</span> open requests
+            </span>
+            <span className="text-slate-300">
+              <span className="text-blue-400 font-bold">{agentStatus.assigned_missions}</span> assigned
+            </span>
+            <span className="text-slate-300">
+              <span className="text-green-400 font-bold">{agentStatus.available_volunteers}</span> available
+            </span>
+          </div>
+          {agentStatus.needs_agent_run && (
+            <span className="text-xs text-amber-400 ml-auto">Agent run recommended</span>
+          )}
+        </div>
+      )}
+
       {agentResult && (
         <div className="card border-green-700/50 bg-green-950/20 mb-6">
           <div className="flex items-center gap-2 mb-2">
@@ -122,13 +191,19 @@ export default function CoordinatorDashboard() {
         </div>
       )}
 
-      {/* Stats bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div className="card flex items-center gap-3">
           <AlertTriangle className="w-8 h-8 text-red-500 shrink-0" />
           <div>
             <p className="text-2xl font-bold">{activeIncidents.length}</p>
             <p className="text-xs text-slate-400">Active Incidents</p>
+          </div>
+        </div>
+        <div className="card flex items-center gap-3">
+          <ClipboardList className="w-8 h-8 text-orange-500 shrink-0" />
+          <div>
+            <p className="text-2xl font-bold">{openAidRequests.length}</p>
+            <p className="text-xs text-slate-400">Open Requests</p>
           </div>
         </div>
         <div className="card flex items-center gap-3">
@@ -154,7 +229,6 @@ export default function CoordinatorDashboard() {
         </div>
       </div>
 
-      {/* Live map */}
       <div className="card mb-6">
         <h2 className="text-lg font-semibold mb-3">Live Operations Map</h2>
         <CoordinatorMap
@@ -165,12 +239,10 @@ export default function CoordinatorDashboard() {
         />
       </div>
 
-      {/* Two-column detail view */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Active incidents */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div>
           <h2 className="text-lg font-semibold mb-3">Active Incidents</h2>
-          <div className="space-y-3">
+          <div className="space-y-3 max-h-[420px] overflow-y-auto scrollbar-thin pr-1">
             {activeIncidents.map((incident) => (
               <div
                 key={incident.id}
@@ -183,13 +255,10 @@ export default function CoordinatorDashboard() {
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <h3 className="font-medium text-sm">{incident.title}</h3>
-                  <span className={severityBadge(incident.severity)}>
-                    {incident.severity}
-                  </span>
+                  <span className={severityBadge(incident.severity)}>{incident.severity}</span>
                 </div>
                 <p className="text-xs text-slate-400">
-                  {incident.type} · {incident.radius_km}km radius ·{" "}
-                  {incident.latitude.toFixed(3)}, {incident.longitude.toFixed(3)}
+                  {incident.type} · {incident.radius_km}km radius
                 </p>
               </div>
             ))}
@@ -199,10 +268,39 @@ export default function CoordinatorDashboard() {
           </div>
         </div>
 
-        {/* Active missions with volunteer assignments */}
+        <div>
+          <h2 className="text-lg font-semibold mb-3">Open Aid Requests</h2>
+          <div className="space-y-3 max-h-[420px] overflow-y-auto scrollbar-thin pr-1">
+            {openAidRequests
+              .sort((a, b) => {
+                const order = { critical: 0, urgent: 1, standard: 2 };
+                return order[a.urgency] - order[b.urgency];
+              })
+              .map((request) => (
+                <div key={request.id} className="card">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <h3 className="font-medium text-sm">{request.title}</h3>
+                    <span className={urgencyBadge(request.urgency)}>{request.urgency}</span>
+                  </div>
+                  <p className="text-xs text-slate-400 line-clamp-2 mb-2">{request.description}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {request.required_skills?.slice(0, 3).map((skill) => (
+                      <span key={skill} className="text-xs bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded">
+                        {skill.replace(/_/g, " ")}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            {openAidRequests.length === 0 && (
+              <p className="text-slate-500 text-sm">No open aid requests</p>
+            )}
+          </div>
+        </div>
+
         <div>
           <h2 className="text-lg font-semibold mb-3">Active Missions</h2>
-          <div className="space-y-3">
+          <div className="space-y-3 max-h-[420px] overflow-y-auto scrollbar-thin pr-1">
             {activeMissions.map((mission) => {
               const vol = volunteers.find((v) => v.id === mission.volunteer_id);
               return (
@@ -227,9 +325,7 @@ export default function CoordinatorDashboard() {
                       <span className="text-xs text-slate-500">{vol.preferred_language}</span>
                     </div>
                   )}
-                  <p className="text-xs text-slate-400 line-clamp-2">
-                    {mission.briefing}
-                  </p>
+                  <p className="text-xs text-slate-400 line-clamp-2">{mission.briefing}</p>
                 </div>
               );
             })}
@@ -239,6 +335,36 @@ export default function CoordinatorDashboard() {
               </p>
             )}
           </div>
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-semibold mb-3">Agent Decision Log</h2>
+        <div className="space-y-2 max-h-[320px] overflow-y-auto scrollbar-thin">
+          {agentLogs.map((log) => (
+            <div key={log.id} className="card py-3">
+              <div className="flex items-center gap-2 mb-1">
+                <Clock className="w-3.5 h-3.5 text-slate-500" />
+                <span className="text-xs text-slate-500">{formatTime(log.timestamp)}</span>
+                {log.trigger && (
+                  <span className="text-xs bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded">
+                    {log.trigger}
+                  </span>
+                )}
+                {log.tool_call_count != null && (
+                  <span className="text-xs text-slate-500 ml-auto">
+                    {log.tool_call_count} tool calls
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-slate-300 line-clamp-2">
+                {log.result_summary || log.action || log.full_result || "Agent action logged"}
+              </p>
+            </div>
+          ))}
+          {agentLogs.length === 0 && (
+            <p className="text-slate-500 text-sm">No agent logs yet. Deploy the agent to see decisions.</p>
+          )}
         </div>
       </div>
     </div>

@@ -9,19 +9,19 @@ import {
 } from "lucide-react";
 
 export default function Layout({ children }: { children: ReactNode }) {
-  const { user, signOut } = useAuth();
+  const { user, signOut, role } = useAuth();
   const location = useLocation();
 
   const navItems = [
-    { path: "/volunteer", label: "My Missions", icon: MapPin },
-    { path: "/coordinator", label: "Command Center", icon: Radio },
-  ];
+    { path: "/volunteer", label: "My Missions", icon: MapPin, roles: ["volunteer", "coordinator"] as const },
+    { path: "/coordinator", label: "Command Center", icon: Radio, roles: ["coordinator"] as const },
+  ].filter((item) => item.roles.includes(role));
 
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-slate-800 border-b border-slate-700 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
+          <Link to={role === "coordinator" ? "/coordinator" : "/volunteer"} className="flex items-center gap-2">
             <AlertTriangle className="w-6 h-6 text-red-500" />
             <span className="text-lg font-bold">CrisisRoute</span>
           </Link>

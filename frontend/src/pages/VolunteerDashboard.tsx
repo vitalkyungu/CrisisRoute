@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { collection, query, where, onSnapshot, doc, getDoc } from "firebase/firestore";
-import { db, auth } from "../lib/firebase";
+import { db, auth, onForegroundMessage } from "../lib/firebase";
 import { api } from "../lib/api";
+import { useNotifications } from "../hooks/useNotifications";
 import type { Mission, Incident } from "../types";
 import MissionMap from "../components/MissionMap";
-import { MapPin, Clock, CheckCircle, Navigation, Shield, Globe, AlertTriangle, Radio, Maximize2, Minimize2, X } from "lucide-react";
+import MissionAlertBanner from "../components/MissionAlertBanner";
+import { MapPin, Clock, CheckCircle, Navigation, Shield, Globe, AlertTriangle, Radio, Maximize2, Minimize2, Loader2 } from "lucide-react";
 
 export default function VolunteerDashboard() {
   const [missions, setMissions] = useState<Mission[]>([]);
@@ -13,6 +15,11 @@ export default function VolunteerDashboard() {
   const [volunteerLocation, setVolunteerLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [mapFullscreen, setMapFullscreen] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [missionAlert, setMissionAlert] = useState<{ title: string; message: string } | null>(null);
+  const knownMissionIds = useRef<Set<string>>(new Set());
+  const initialMissionLoad = useRef(true);
+  const { saveFcmToken } = useNotifications();
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -21,6 +28,22 @@ export default function VolunteerDashboard() {
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, []);
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    saveFcmToken(user.uid);
+
+    onForegroundMessage((payload: any) => {
+      const title = payload?.notification?.title || "New Mission Assignment";
+      const body = payload?.notification?.body || payload?.data?.briefing || "Check your mission briefing.";
+      setMissionAlert({ title, message: body });
+      if (Notification.permission === "granted") {
+        new Notification(title, { body });
+      }
+    });
+  }, [saveFcmToken]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -55,6 +78,34 @@ export default function VolunteerDashboard() {
       setMissions(data.sort((a, b) => (b.assigned_at > a.assigned_at ? 1 : -1)));
       setLoading(false);
 
+      if (!initialMissionLoad.current) {
+        for (const mission of data) {
+          if (
+            mission.status === "assigned" &&
+            !knownMissionIds.current.has(mission.id)
+          ) {
+            const briefing = mission.translated_briefing || mission.briefing;
+            setMissionAlert({
+              title: "New Mission Assigned",
+              message: briefing?.slice(0, 200) || "You have a new mission. Open the app to view details.",
+            });
+            if (Notification.permission === "granted") {
+              new Notification("New Mission Assigned", {
+                body: briefing?.slice(0, 120) || "You have a new mission briefing.",
+              });
+            }
+            try {
+              navigator.vibrate?.(200);
+            } catch {
+              // vibration not supported
+            }
+          }
+        }
+      }
+
+      data.forEach((m) => knownMissionIds.current.add(m.id));
+      initialMissionLoad.current = false;
+
       const active = data.find((m) => !["completed", "cancelled"].includes(m.status));
       if (active?.incident_id) {
         const incSnap = await getDoc(doc(db, "incidents", active.incident_id));
@@ -71,6 +122,18 @@ export default function VolunteerDashboard() {
     await api.missions.updateStatus(missionId, status);
   };
 
+  const declineMission = async (missionId: string) => {
+    setDeclining(true);
+    try {
+      await api.agent.reassign(missionId, "volunteer_declined");
+    } catch (e: any) {
+      console.error("Reassign failed, cancelling mission:", e);
+      await api.missions.updateStatus(missionId, "cancelled");
+    } finally {
+      setDeclining(false);
+    }
+  };
+
   const activeMission = missions.find(
     (m) => !["completed", "cancelled"].includes(m.status)
   );
@@ -85,6 +148,14 @@ export default function VolunteerDashboard() {
 
   return (
     <div className="max-w-3xl mx-auto">
+      {missionAlert && (
+        <MissionAlertBanner
+          title={missionAlert.title}
+          message={missionAlert.message}
+          onDismiss={() => setMissionAlert(null)}
+        />
+      )}
+
       <h1 className="text-2xl font-bold mb-6">My Missions</h1>
 
       {activeMission ? (
@@ -138,8 +209,18 @@ export default function VolunteerDashboard() {
                   <button onClick={() => updateStatus(activeMission.id, "accepted")} className="btn-primary flex items-center gap-2">
                     <CheckCircle className="w-4 h-4" /> Accept Mission
                   </button>
-                  <button onClick={() => updateStatus(activeMission.id, "cancelled")} className="btn-secondary">
-                    Decline
+                  <button
+                    onClick={() => declineMission(activeMission.id)}
+                    disabled={declining}
+                    className="btn-secondary flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {declining ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Reassigning...
+                      </>
+                    ) : (
+                      "Decline"
+                    )}
                   </button>
                 </>
               )}
