@@ -1,0 +1,59 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Volunteers can read/write their own profile
+    match /volunteers/{volunteerId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == volunteerId;
+      allow update: if request.auth != null && (
+        request.auth.uid == volunteerId ||
+        request.auth.token.role == 'coordinator'
+      );
+      allow delete: if request.auth.token.role == 'coordinator';
+    }
+
+    // Incidents: anyone authenticated can read, only backend/coordinators can write
+    match /incidents/{incidentId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth.token.role == 'coordinator' ||
+                      request.auth.token.role == 'service';
+    }
+
+    // Missions: volunteers see their own, coordinators see all
+    match /missions/{missionId} {
+      allow read: if request.auth != null && (
+        resource.data.volunteer_id == request.auth.uid ||
+        request.auth.token.role == 'coordinator'
+      );
+      allow create: if request.auth.token.role == 'coordinator' ||
+                       request.auth.token.role == 'service';
+      allow update: if request.auth != null && (
+        resource.data.volunteer_id == request.auth.uid ||
+        request.auth.token.role == 'coordinator' ||
+        request.auth.token.role == 'service'
+      );
+    }
+
+    // Aid requests: authenticated users can create, coordinators manage
+    match /aid_requests/{requestId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth.token.role == 'coordinator' ||
+                               request.auth.token.role == 'service';
+    }
+
+    // Alert logs: coordinators only
+    match /alert_logs/{logId} {
+      allow read: if request.auth.token.role == 'coordinator';
+      allow write: if request.auth.token.role == 'service';
+    }
+
+    // Agent logs: coordinators only
+    match /agent_logs/{logId} {
+      allow read: if request.auth.token.role == 'coordinator';
+      allow write: if request.auth.token.role == 'service';
+    }
+  }
+}

@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Build
+frontend/dist/
+backend/dist/
+
+# Environment
+.env
+.env.local
+*.env
+service-account-key.json
+*firebase-adminsdk*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+._*
+Thumbs.db
+
+# Firebase
+.firebase/
+
+# Accidental local artifacts
+-r
+google-clo
+firebase-admin==6.6.0-
