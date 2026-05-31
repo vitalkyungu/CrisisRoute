@@ -13,6 +13,7 @@
     "@googlemaps/js-api-loader": "^1.16.8",
     "@googlemaps/react-wrapper": "^1.1.42",
     "firebase": "^11.1.0",
+    "is-callable": "^1.2.7",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

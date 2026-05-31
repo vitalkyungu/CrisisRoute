@@ -5,7 +5,6 @@ import { deleteUser, reauthenticateWithPopup } from "firebase/auth";
 import { auth, db, googleProvider } from "../lib/firebase";
 import { useAuth } from "../hooks/useAuth";
 import type { Volunteer } from "../types";
-import { useNotifications } from "../hooks/useNotifications";
 import { Loader2, Trash2, User, Mail, Globe, MapPin, ArrowLeft, Phone } from "lucide-react";
 import { isValidE164, normalizePhone } from "../lib/phone";
 

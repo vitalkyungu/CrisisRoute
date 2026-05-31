@@ -8,6 +8,8 @@ export interface Incident {
   longitude: number;
   radius_km: number;
   source: string;
+  status?: "active" | "resolved" | "archived";
+  detected_at?: string;
   live?: boolean;
 }
 

@@ -8,6 +8,7 @@ venv/
 # Build
 frontend/dist/
 backend/dist/
+tmp/
 
 # Environment
 .env

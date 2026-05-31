@@ -94,4 +94,4 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           projectId: ${{ env.PROJECT_ID }}
           channelId: live
-          entryPoint: firebase
+          entryPoint: .
