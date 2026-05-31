@@ -18,7 +18,7 @@ load_dotenv(PROJECT_ROOT / ".env", override=False)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.routes import incidents, volunteers, missions, alerts, agent_trigger
+from src.routes import incidents, volunteers, missions, alerts, agent_trigger, good_deeds, civic
 from src.services.firebase import initialize_firebase
 
 app = FastAPI(
@@ -42,6 +42,8 @@ app.include_router(volunteers.router, prefix="/api/volunteers", tags=["Volunteer
 app.include_router(missions.router, prefix="/api/missions", tags=["Missions"])
 app.include_router(alerts.router, prefix="/api/alerts", tags=["Alerts"])
 app.include_router(agent_trigger.router, prefix="/api/agent", tags=["Agent"])
+app.include_router(good_deeds.router, prefix="/api/good-deeds", tags=["GoodDeeds"])
+app.include_router(civic.router, prefix="/api/civic", tags=["Civic"])
 
 
 @app.get("/health")

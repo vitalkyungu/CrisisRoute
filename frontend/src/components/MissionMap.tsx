@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { kmBetween } from "../lib/maps";
-import type { Mission, Incident } from "../types";
+import { loadGoogleMaps } from "../lib/googleMapsLoader";
+import type { Mission, Incident, CivicReport } from "../types";
 
 /** Only draw danger zone when the incident is near the volunteer or destination. */
 function relevantIncident(
@@ -30,6 +31,8 @@ interface MissionMapProps {
   mapClassName?: string;
   /** When browsing the disaster list, always pan to the selected incident */
   focusSelectedIncident?: boolean;
+  /** Civic 311 pins — amber dots only, does not affect map bounds */
+  civicReports?: CivicReport[];
 }
 
 /**
@@ -45,11 +48,13 @@ export default function MissionMap({
   loadingRoute = false,
   mapClassName,
   focusSelectedIncident = false,
+  civicReports = [],
 }: MissionMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const overlaysRef = useRef<(google.maps.Marker | google.maps.Circle | google.maps.Polyline)[]>([]);
-  const [map, setMap] = useState<google.maps.Map | null>(null);
-  const [error, setError] = useState<string>("");
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState("");
 
   function clearOverlays() {
     overlaysRef.current.forEach((o) => o.setMap(null));
@@ -72,21 +77,24 @@ export default function MissionMap({
   }
 
   useEffect(() => {
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;
-    if (!apiKey || !mapRef.current) {
-      setError("Google Maps API key not configured");
-      return;
-    }
+    let cancelled = false;
 
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry`;
-    script.async = true;
-    script.onload = () => initMap();
-    script.onerror = () => setError("Failed to load Google Maps");
-    document.head.appendChild(script);
+    loadGoogleMaps()
+      .then(() => {
+        if (cancelled || !mapRef.current) return;
+        if (mapInstanceRef.current) {
+          setReady(true);
+          renderOverlays(mapInstanceRef.current);
+          return;
+        }
+        initMap();
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e.message);
+      });
 
     return () => {
-      document.head.removeChild(script);
+      cancelled = true;
     };
   }, []);
 
@@ -116,7 +124,8 @@ export default function MissionMap({
       zoomControl: true,
     });
 
-    setMap(mapInstance);
+    mapInstanceRef.current = mapInstance;
+    setReady(true);
     renderOverlays(mapInstance);
   }
 
@@ -172,6 +181,26 @@ export default function MissionMap({
       });
       overlaysRef.current.push(volunteerMarker);
     }
+
+    // --- CIVIC PINS: Amber dots (no circles, no fitBounds) ---
+    civicReports.forEach((report) => {
+      if (report.status === "completed") return;
+      const color = report.status === "claimed" ? "#f59e0b" : "#d97706";
+      const civicMarker = new google.maps.Marker({
+        position: { lat: report.latitude, lng: report.longitude },
+        map: mapInstance,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 9,
+          fillColor: color,
+          fillOpacity: 0.95,
+          strokeColor: "#ffffff",
+          strokeWeight: 2,
+        },
+        title: `🏗 ${report.title}`,
+      });
+      overlaysRef.current.push(civicMarker);
+    });
 
     // --- ROUTE POLYLINE: Decoded from mission.route_polyline ---
     if (mission.route_polyline && window.google?.maps?.geometry) {
@@ -254,10 +283,9 @@ export default function MissionMap({
     }
   }
 
-  // Re-render overlays when mission data updates
   useEffect(() => {
-    if (map) renderOverlays(map);
-  }, [map, mission.route_polyline, incident?.id, volunteerLocation, destination, focusSelectedIncident]);
+    if (ready && mapInstanceRef.current) renderOverlays(mapInstanceRef.current);
+  }, [ready, mission.route_polyline, incident?.id, volunteerLocation, destination, focusSelectedIncident, civicReports]);
 
   if (error) {
     return (
@@ -306,6 +334,12 @@ export default function MissionMap({
           <div className="w-3 h-3 rounded-full bg-blue-500" />
           <span className="text-slate-300">Your position</span>
         </div>
+        {civicReports.length > 0 && (
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-amber-500" />
+            <span className="text-slate-300">Civic 311</span>
+          </div>
+        )}
       </div>
     </div>
   );

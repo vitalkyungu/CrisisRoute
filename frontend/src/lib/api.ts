@@ -6,7 +6,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
+    let detail = response.statusText;
+    try {
+      const err = await response.json();
+      detail = err.detail || err.error || detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
   return response.json();
 }
@@ -68,5 +75,56 @@ export const api = {
       request<any>(`/alerts/welcome/${volunteerId}`, { method: "POST" }),
     sendMission: (missionId: string) =>
       request<any>(`/alerts/mission/${missionId}`, { method: "POST" }),
+  },
+  goodDeeds: {
+    post: (data: {
+      posted_by: string;
+      description: string;
+      latitude: number;
+      longitude: number;
+      category?: string;
+      time_window?: string;
+    }) =>
+      request<any>("/good-deeds/", { method: "POST", body: JSON.stringify(data) }),
+    nearby: (lat: number, lng: number, radiusKm = 15, excludeUserId = "") =>
+      request<any[]>(
+        `/good-deeds/nearby?latitude=${lat}&longitude=${lng}&radius_km=${radiusKm}&exclude_user_id=${encodeURIComponent(excludeUserId)}`
+      ),
+    helping: (volunteerId: string) => request<any[]>(`/good-deeds/helping/${volunteerId}`),
+    posted: (userId: string) => request<any[]>(`/good-deeds/posted/${userId}`),
+    stats: (userId: string) => request<any>(`/good-deeds/stats/${userId}`),
+    claim: (deedId: string, volunteerId: string) =>
+      request<any>(`/good-deeds/${deedId}/claim`, {
+        method: "POST",
+        body: JSON.stringify({ volunteer_id: volunteerId }),
+      }),
+    complete: (deedId: string, volunteerId: string) =>
+      request<any>(`/good-deeds/${deedId}/complete`, {
+        method: "POST",
+        body: JSON.stringify({ volunteer_id: volunteerId }),
+      }),
+  },
+  civic: {
+    sync: (places = "portland,eugene", mockOnly = false) =>
+      request<any>(
+        `/civic/sync?places=${encodeURIComponent(places)}&use_mock_fallback=true&mock_only=${mockOnly}`,
+        { method: "POST" }
+      ),
+    nearby: (lat: number, lng: number, radiusKm = 25) =>
+      request<any[]>(`/civic/nearby?latitude=${lat}&longitude=${lng}&radius_km=${radiusKm}`),
+    checkingOut: (volunteerId: string) =>
+      request<any[]>(`/civic/checking-out/${volunteerId}`),
+    active: () => request<any[]>("/civic/active"),
+    overseerSummary: () => request<any>("/civic/overseer/summary"),
+    checkOut: (reportId: string, volunteerId: string) =>
+      request<any>(`/civic/${reportId}/check-out`, {
+        method: "POST",
+        body: JSON.stringify({ volunteer_id: volunteerId }),
+      }),
+    complete: (reportId: string, volunteerId: string) =>
+      request<any>(`/civic/${reportId}/complete`, {
+        method: "POST",
+        body: JSON.stringify({ volunteer_id: volunteerId }),
+      }),
   },
 };

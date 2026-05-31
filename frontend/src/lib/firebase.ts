@@ -63,20 +63,27 @@ export async function registerMessagingServiceWorker(): Promise<ServiceWorkerReg
   }
 }
 
-export async function requestNotificationPermission(): Promise<string | null> {
+export async function getFcmToken(): Promise<string | null> {
   const msg = getMessagingInstance();
-  if (!msg) return null;
-
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") return null;
+  if (!msg || Notification.permission !== "granted") return null;
 
   const registration = await registerMessagingServiceWorker();
-
   const token = await getToken(msg, {
     vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
     ...(registration ? { serviceWorkerRegistration: registration } : {}),
   });
   return token;
+}
+
+/** Call only from a user gesture (button click, form submit). */
+export async function requestNotificationPermission(): Promise<string | null> {
+  if (Notification.permission === "denied") return null;
+  if (Notification.permission === "granted") return getFcmToken();
+
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") return null;
+
+  return getFcmToken();
 }
 
 export function onForegroundMessage(callback: (payload: unknown) => void) {

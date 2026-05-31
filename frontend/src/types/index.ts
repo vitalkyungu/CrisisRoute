@@ -8,8 +8,8 @@ export interface Incident {
   longitude: number;
   radius_km: number;
   source: string;
-  source?: string;
   live?: boolean;
+}
 
 export interface Volunteer {
   id: string;
@@ -52,6 +52,63 @@ export interface AidRequest {
   latitude: number;
   longitude: number;
   status: "open" | "assigned" | "fulfilled";
+}
+
+export interface GoodDeed {
+  id: string;
+  posted_by: string;
+  description: string;
+  latitude: number;
+  longitude: number;
+  category: string;
+  time_window?: string;
+  status: "open" | "claimed" | "completed" | "rejected";
+  claimed_by?: string;
+  claimed_by_name?: string;
+  claimed_at?: string;
+  distance_km?: number;
+}
+
+export interface VolunteerStats {
+  user_id: string;
+  total_points: number;
+  current_streak: number;
+  longest_streak: number;
+  deeds_completed: number;
+  missions_completed?: number;
+}
+
+export interface CivicReport {
+  id: string;
+  external_id?: string;
+  source: "seeclickfix" | "mock";
+  title: string;
+  description?: string;
+  latitude: number;
+  longitude: number;
+  address?: string;
+  category?: string;
+  department?: string;
+  status: "open" | "claimed" | "completed";
+  claimed_by?: string;
+  claimed_by_name?: string;
+  html_url?: string;
+  photo_url?: string;
+  place?: string;
+  distance_km?: number;
+}
+
+export interface OverseerSummary {
+  summary: string;
+  stats: {
+    civic_open: number;
+    civic_claimed: number;
+    civic_completed_today: number;
+    deeds_open: number;
+    deeds_claimed: number;
+    missions_active: number;
+    volunteers_idle: number;
+  };
 }
 
 export type UserRole = "volunteer" | "coordinator";

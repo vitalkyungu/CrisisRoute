@@ -3,10 +3,12 @@ import { collection, query, where, onSnapshot, doc, getDoc } from "firebase/fire
 import { db, auth, onForegroundMessage } from "../lib/firebase";
 import { api } from "../lib/api";
 import { useNotifications } from "../hooks/useNotifications";
-import type { Mission, Incident, AidRequest } from "../types";
+import type { Mission, Incident, AidRequest, CivicReport } from "../types";
 import MissionMap from "../components/MissionMap";
 import MissionAlertBanner from "../components/MissionAlertBanner";
 import IncidentDetailPanel from "../components/IncidentDetailPanel";
+import GoodDeedsFeed from "../components/GoodDeedsFeed";
+import CivicPanel from "../components/CivicPanel";
 import { googleMapsDirectionsUrl } from "../lib/maps";
 import { MapPin, Clock, CheckCircle, Navigation, Shield, Globe, AlertTriangle, Radio, Maximize2, Minimize2, Loader2, ExternalLink } from "lucide-react";
 
@@ -22,9 +24,25 @@ export default function VolunteerDashboard() {
   const [missionDestination, setMissionDestination] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const [accepting, setAccepting] = useState(false);
   const [calculatingRoute, setCalculatingRoute] = useState(false);
+  const [civicReports, setCivicReports] = useState<CivicReport[]>([]);
+  const [pointsRefresh, setPointsRefresh] = useState(0);
   const knownMissionIds = useRef<Set<string>>(new Set());
   const initialMissionLoad = useRef(true);
-  const { saveFcmToken } = useNotifications();
+  const { syncFcmTokenIfGranted } = useNotifications();
+
+  const loadCivicReports = async () => {
+    const user = auth.currentUser;
+    if (!user || !volunteerLocation) return;
+    try {
+      const [nearby, checking] = await Promise.all([
+        api.civic.nearby(volunteerLocation.lat, volunteerLocation.lng, 50),
+        api.civic.checkingOut(user.uid),
+      ]);
+      setCivicReports([...checking, ...nearby]);
+    } catch {
+      setCivicReports([]);
+    }
+  };
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -38,17 +56,33 @@ export default function VolunteerDashboard() {
     const user = auth.currentUser;
     if (!user) return;
 
-    saveFcmToken(user.uid);
+    syncFcmTokenIfGranted(user.uid);
 
     onForegroundMessage((payload: any) => {
-      const title = payload?.notification?.title || "New Mission Assignment";
-      const body = payload?.notification?.body || payload?.data?.briefing || "Check your mission briefing.";
+      const data = payload?.data || {};
+      const title = payload?.notification?.title || "CrisisRoute";
+      const body =
+        payload?.notification?.body ||
+        payload?.data?.briefing ||
+        "You have a new update.";
+
+      if (data.type === "good_deed_claimed" || data.type === "good_deed_completed") {
+        if (Notification.permission === "granted") {
+          new Notification(title, { body });
+        }
+        return;
+      }
+
       setMissionAlert({ title, message: body });
       if (Notification.permission === "granted") {
         new Notification(title, { body });
       }
     });
-  }, [saveFcmToken]);
+  }, [syncFcmTokenIfGranted]);
+
+  useEffect(() => {
+    loadCivicReports();
+  }, [volunteerLocation]);
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -379,6 +413,7 @@ export default function VolunteerDashboard() {
               volunteerLocation={volunteerLocation}
               destination={missionDestination}
               loadingRoute={calculatingRoute && !activeMission.route_polyline}
+              civicReports={civicReports}
             />
           </div>
         </div>
@@ -464,6 +499,7 @@ export default function VolunteerDashboard() {
                     volunteerLocation={volunteerLocation}
                     focusSelectedIncident
                     mapClassName="w-full h-full min-h-0 rounded-lg"
+                    civicReports={civicReports}
                   />
                 </div>
               </div>
@@ -554,6 +590,7 @@ export default function VolunteerDashboard() {
                       volunteerLocation={volunteerLocation}
                       focusSelectedIncident
                       mapClassName="w-full h-full min-h-[280px] rounded-lg"
+                      civicReports={civicReports}
                     />
                   </div>
                   <p className="text-xs text-slate-500 mt-2 shrink-0">
@@ -586,6 +623,22 @@ export default function VolunteerDashboard() {
               </>
             )}
           </div>
+
+          {!activeMission && volunteerLocation && (
+            <section className="mt-10 pt-8 border-t border-slate-700/60 space-y-8">
+              <CivicPanel
+                latitude={volunteerLocation.lat}
+                longitude={volunteerLocation.lng}
+                onStatsRefresh={() => setPointsRefresh((n) => n + 1)}
+                onCivicRefresh={loadCivicReports}
+              />
+              <GoodDeedsFeed
+                latitude={volunteerLocation.lat}
+                longitude={volunteerLocation.lng}
+                refreshTrigger={pointsRefresh}
+              />
+            </section>
+          )}
         </>
       )}
 

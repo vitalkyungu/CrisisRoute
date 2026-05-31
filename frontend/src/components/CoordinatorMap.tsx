@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react";
-import type { Incident, Volunteer, Mission } from "../types";
+import { loadGoogleMaps } from "../lib/googleMapsLoader";
+import type { Incident, Volunteer, Mission, CivicReport } from "../types";
 
 interface CoordinatorMapProps {
   incidents: Incident[];
   volunteers: Volunteer[];
   missions: Mission[];
+  civicReports?: CivicReport[];
   focusIncidentId?: string | null;
   onIncidentSelect?: (incidentId: string) => void;
 }
@@ -17,6 +19,7 @@ export default function CoordinatorMap({
   incidents,
   volunteers,
   missions,
+  civicReports = [],
   focusIncidentId,
   onIncidentSelect,
 }: CoordinatorMapProps) {
@@ -26,29 +29,29 @@ export default function CoordinatorMap({
   const overlaysRef = useRef<(google.maps.Circle | google.maps.Polyline)[]>([]);
 
   useEffect(() => {
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_KEY;
-    if (!apiKey || !mapRef.current) return;
+    let cancelled = false;
 
-    if (mapInstanceRef.current) {
-      updateOverlays();
-      return;
-    }
+    loadGoogleMaps()
+      .then(() => {
+        if (cancelled || !mapRef.current) return;
+        if (mapInstanceRef.current) {
+          updateOverlays();
+          return;
+        }
+        initMap();
+      })
+      .catch(() => {
+        /* coordinator map fails silently */
+      });
 
-    const script = document.querySelector(`script[src*="maps.googleapis.com"]`);
-    if (script || window.google?.maps) {
-      initMap();
-    } else {
-      const newScript = document.createElement("script");
-      newScript.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry`;
-      newScript.async = true;
-      newScript.onload = () => initMap();
-      document.head.appendChild(newScript);
-    }
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (mapInstanceRef.current) updateOverlays();
-  }, [incidents, volunteers, missions, onIncidentSelect]);
+  }, [incidents, volunteers, missions, civicReports, onIncidentSelect]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -150,6 +153,25 @@ export default function CoordinatorMap({
       markersRef.current.push(marker);
     });
 
+    // Civic 311 pins
+    civicReports.forEach((report) => {
+      if (report.status === "completed") return;
+      const marker = new google.maps.Marker({
+        position: { lat: report.latitude, lng: report.longitude },
+        map,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 8,
+          fillColor: "#d97706",
+          fillOpacity: 0.9,
+          strokeColor: "#fff",
+          strokeWeight: 2,
+        },
+        title: report.title,
+      });
+      markersRef.current.push(marker);
+    });
+
     // Active mission routes
     missions.forEach((mission) => {
       if (mission.route_polyline && window.google?.maps?.geometry) {
@@ -190,6 +212,12 @@ export default function CoordinatorMap({
           <div className="w-3 h-3 rounded-full bg-blue-500" />
           <span className="text-slate-300">On site</span>
         </div>
+        {civicReports.length > 0 && (
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-full bg-amber-600" />
+            <span className="text-slate-300">Civic 311</span>
+          </div>
+        )}
       </div>
     </div>
   );

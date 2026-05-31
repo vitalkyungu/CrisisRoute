@@ -1,0 +1,52 @@
+[
+  {
+    "external_id": "mock-eugene-001",
+    "summary": "Streetlight out — 7th & Pearl",
+    "description": "Streetlight has been out for 3 nights. Pedestrian crossing is dark.",
+    "latitude": 44.0521,
+    "longitude": -123.0868,
+    "address": "7th Ave & Pearl St, Eugene, OR",
+    "category": "streetlight",
+    "department": "Public Works"
+  },
+  {
+    "external_id": "mock-eugene-002",
+    "summary": "Large pothole — Alder St bike lane",
+    "description": "Deep pothole in northbound bike lane, hazard for cyclists.",
+    "latitude": 44.0485,
+    "longitude": -123.092,
+    "address": "Alder St, Eugene, OR",
+    "category": "pothole",
+    "department": "Public Works"
+  },
+  {
+    "external_id": "mock-eugene-003",
+    "summary": "Flooded sidewalk after storm",
+    "description": "Standing water blocking wheelchair access near bus stop.",
+    "latitude": 44.056,
+    "longitude": -123.078,
+    "address": "Willamette St, Eugene, OR",
+    "category": "flooding",
+    "department": "Transportation"
+  },
+  {
+    "external_id": "mock-eugene-004",
+    "summary": "Downed tree branch — park path",
+    "description": "Branch blocking shared-use path in park, partially obstructing trail.",
+    "latitude": 44.044,
+    "longitude": -123.105,
+    "address": "Alton Baker Park, Eugene, OR",
+    "category": "debris",
+    "department": "Parks"
+  },
+  {
+    "external_id": "mock-eugene-005",
+    "summary": "Graffiti on community board",
+    "description": "Vandalism on neighborhood bulletin board at bus shelter.",
+    "latitude": 44.059,
+    "longitude": -123.088,
+    "address": "High St, Eugene, OR",
+    "category": "graffiti",
+    "department": "Public Works"
+  }
+]

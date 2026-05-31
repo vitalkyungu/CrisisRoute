@@ -56,6 +56,20 @@ python3 scripts/assign_mission_to_me.py --email vitalkabange77@gmail.com --creat
 
 **Verify:** Command Center shows open requests + missions; Volunteer tab shows assigned mission after accept → map shows safe route.
 
+**Civic 311 (SeeClickFix hybrid — manual checkout, shared points):**
+
+```bash
+# Sync live Portland issues (+ Eugene mock if empty)
+curl -X POST "http://localhost:8080/api/civic/sync?places=portland,eugene&use_mock_fallback=true"
+
+# AI overseer briefing (Command Center → Activity Summary)
+curl http://localhost:8080/api/civic/overseer/summary
+```
+
+1. **Command Center** → **Sync Civic 311** → amber pins on map + civic list
+2. **My Missions** (volunteer tab) → scroll to **Civic Issues (311)** → **Check it out** → inspect → **Mark complete (+10 pts)**
+3. Good Deeds section below uses the same volunteer points/streak stats
+
 **If agent returns `'async for' requires __aiter__`:** the backend is running stale agent code. Stop uvicorn (Ctrl+C) and restart with `scripts/start_backend.sh` (watches `agent/` for changes).
 
 **Test welcome SMS** (after saving your **personal** mobile on Profile — not the Twilio `+1206…` sender):

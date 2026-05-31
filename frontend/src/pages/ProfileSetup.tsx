@@ -41,7 +41,7 @@ export default function ProfileSetup() {
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [error, setError] = useState("");
-  const { saveFcmToken } = useNotifications();
+  const { enableNotifications } = useNotifications();
 
   const toggleSkill = (skill: string) => {
     setSkills((prev) =>
@@ -118,7 +118,7 @@ export default function ProfileSetup() {
       await Promise.race([savePromise, timeoutPromise]);
 
       setStatusMsg("Enabling notifications...");
-      await saveFcmToken(user.uid);
+      await enableNotifications(user.uid);
 
       if (normalizedPhone) {
         setStatusMsg("Sending welcome SMS...");

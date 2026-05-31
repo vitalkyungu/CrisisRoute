@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { api } from "../lib/api";
-import type { Incident, Volunteer, Mission, AidRequest, AgentLog, AgentStatus } from "../types";
+import type { Incident, Volunteer, Mission, AidRequest, AgentLog, AgentStatus, CivicReport } from "../types";
 import CoordinatorMap from "../components/CoordinatorMap";
 import IncidentDetailPanel from "../components/IncidentDetailPanel";
 import {
@@ -15,6 +15,7 @@ import {
   Zap,
   ClipboardList,
   Bot,
+  Construction,
   Clock,
 } from "lucide-react";
 
@@ -30,6 +31,11 @@ export default function CoordinatorDashboard() {
   const [agentResult, setAgentResult] = useState<string>("");
   const [feedPolling, setFeedPolling] = useState(false);
   const [feedResult, setFeedResult] = useState<string>("");
+  const [civicReports, setCivicReports] = useState<CivicReport[]>([]);
+  const [civicSyncing, setCivicSyncing] = useState(false);
+  const [civicResult, setCivicResult] = useState<string>("");
+  const [overseerLoading, setOverseerLoading] = useState(false);
+  const [overseerSummary, setOverseerSummary] = useState<string>("");
 
   useEffect(() => {
     const unsubs = [
@@ -103,9 +109,48 @@ export default function CoordinatorDashboard() {
     }
   };
 
+  const loadCivic = useCallback(async () => {
+    try {
+      const reports = await api.civic.active();
+      setCivicReports(reports);
+    } catch {
+      setCivicReports([]);
+    }
+  }, []);
+
+  const syncCivic = async () => {
+    setCivicSyncing(true);
+    setCivicResult("");
+    try {
+      const result = await api.civic.sync("portland,eugene");
+      setCivicResult(
+        `${result.fetched ?? 0} synced · ${result.open_reports ?? 0} open · ${result.claimed_reports ?? 0} in progress` +
+          (result.used_mock ? " (Eugene mock included)" : "")
+      );
+      await loadCivic();
+    } catch (e: any) {
+      setCivicResult(`Civic sync error: ${e.message}`);
+    } finally {
+      setCivicSyncing(false);
+    }
+  };
+
+  const runOverseer = async () => {
+    setOverseerLoading(true);
+    try {
+      const result = await api.civic.overseerSummary();
+      setOverseerSummary(result.summary || "");
+    } catch (e: any) {
+      setOverseerSummary(`Overseer error: ${e.message}`);
+    } finally {
+      setOverseerLoading(false);
+    }
+  };
+
   useEffect(() => {
     pollFeeds();
-  }, []);
+    loadCivic();
+  }, [loadCivic]);
 
   const activeIncidents = incidents.filter((i) => i.status === "active");
   const idleVolunteers = volunteers.filter((v) => v.status === "idle" && v.availability);
@@ -170,6 +215,14 @@ export default function CoordinatorDashboard() {
         </div>
         <div className="flex gap-3">
           <button
+            onClick={syncCivic}
+            disabled={civicSyncing}
+            className="btn-secondary flex items-center gap-2 text-sm"
+          >
+            <Construction className={`w-4 h-4 ${civicSyncing ? "animate-spin" : ""}`} />
+            {civicSyncing ? "Syncing Civic…" : "Sync Civic 311"}
+          </button>
+          <button
             onClick={pollFeeds}
             disabled={feedPolling}
             className="btn-secondary flex items-center gap-2 text-sm"
@@ -220,6 +273,45 @@ export default function CoordinatorDashboard() {
           )}
         </div>
       )}
+
+      {civicResult && (
+        <div className="card border-amber-700/50 bg-amber-950/20 mb-6">
+          <div className="flex items-center gap-2 mb-1">
+            <Construction className="w-4 h-4 text-amber-400" />
+            <span className="text-sm font-medium text-amber-400">Civic 311 Feed</span>
+          </div>
+          <p className="text-sm text-slate-300">{civicResult}</p>
+        </div>
+      )}
+
+      <div className="card mb-6 border-violet-800/40 bg-violet-950/10">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-2">
+            <Bot className="w-5 h-5 text-violet-400" />
+            <h2 className="text-lg font-semibold text-violet-200">AI Overseer</h2>
+          </div>
+          <button
+            onClick={runOverseer}
+            disabled={overseerLoading}
+            className="btn-secondary text-sm flex items-center gap-2"
+          >
+            {overseerLoading ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Bot className="w-4 h-4" />
+            )}
+            Activity Summary
+          </button>
+        </div>
+        <p className="text-xs text-slate-500 mb-2">
+          Tracks civic checkouts, good deeds, and disaster missions — does not auto-assign potholes.
+        </p>
+        {overseerSummary ? (
+          <p className="text-sm text-slate-300 whitespace-pre-wrap">{overseerSummary}</p>
+        ) : (
+          <p className="text-sm text-slate-500">Press Activity Summary for a Gemini briefing.</p>
+        )}
+      </div>
 
       {feedResult && (
         <div className="card border-blue-700/50 bg-blue-950/20 mb-6">
@@ -285,6 +377,7 @@ export default function CoordinatorDashboard() {
           incidents={activeIncidents}
           volunteers={volunteers}
           missions={activeMissions}
+          civicReports={civicReports}
           focusIncidentId={selectedIncidentId}
           onIncidentSelect={setSelectedIncidentId}
         />
@@ -299,6 +392,36 @@ export default function CoordinatorDashboard() {
           />
         </div>
       )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div>
+          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <Construction className="w-5 h-5 text-amber-400" />
+            Civic Issues ({civicReports.length})
+          </h2>
+          <div className="space-y-2 max-h-[320px] overflow-y-auto scrollbar-thin pr-1">
+            {civicReports.map((r) => (
+              <div key={r.id} className="card py-3">
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="text-sm font-medium">{r.title}</h3>
+                  <span className="text-[10px] uppercase text-slate-500">{r.status}</span>
+                </div>
+                <p className="text-xs text-slate-500 mt-1 line-clamp-2">{r.description || r.address}</p>
+                <div className="flex flex-wrap gap-2 mt-2 text-xs text-slate-500">
+                  <span>{r.department || r.category}</span>
+                  <span>{r.place || r.source}</span>
+                  {r.claimed_by_name && (
+                    <span className="text-green-400">{r.claimed_by_name} checking out</span>
+                  )}
+                </div>
+              </div>
+            ))}
+            {civicReports.length === 0 && (
+              <p className="text-slate-500 text-sm">Sync Civic 311 to load reports.</p>
+            )}
+          </div>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div>
