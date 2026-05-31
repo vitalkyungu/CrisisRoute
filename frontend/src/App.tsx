@@ -7,16 +7,17 @@ import CoordinatorDashboard from "./pages/CoordinatorDashboard";
 import ProfileSetup from "./pages/ProfileSetup";
 import Profile from "./pages/Profile";
 import Layout from "./components/Layout";
+import { CrisisRouteLogoStacked } from "./components/CrisisRouteLogo";
 
 export default function App() {
   const { user, loading, hasProfile } = useAuth();
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse flex flex-col items-center gap-4">
-          <div className="w-16 h-16 bg-red-600 rounded-full" />
-          <p className="text-slate-400">Loading CrisisRoute...</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+        <div className="animate-pulse flex flex-col items-center gap-6">
+          <CrisisRouteLogoStacked size={72} />
+          <p className="text-slate-400 text-sm">Loading CrisisRoute...</p>
         </div>
       </div>
     );

@@ -3,7 +3,14 @@ export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        display: ["Syne", "sans-serif"],
+      },
       colors: {
+        brand: {
+          red: "#E8593C",
+          navy: "#1a1f2e",
+        },
         crisis: {
           50: "#fef2f2",
           100: "#fee2e2",

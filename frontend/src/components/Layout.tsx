@@ -1,12 +1,8 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
-import {
-  AlertTriangle,
-  MapPin,
-  LogOut,
-  Radio,
-} from "lucide-react";
+import CrisisRouteLogo from "./CrisisRouteLogo";
+import { MapPin, LogOut, Radio } from "lucide-react";
 
 export default function Layout({ children }: { children: ReactNode }) {
   const { user, signOut, canAccessCommandCenter } = useAuth();
@@ -23,9 +19,8 @@ export default function Layout({ children }: { children: ReactNode }) {
     <div className="min-h-screen flex flex-col">
       <header className="bg-slate-800 border-b border-slate-700 px-4 py-3">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <Link to="/volunteer" className="flex items-center gap-2">
-            <AlertTriangle className="w-6 h-6 text-red-500" />
-            <span className="text-lg font-bold">CrisisRoute</span>
+          <Link to="/volunteer" className="hover:opacity-90 transition-opacity">
+            <CrisisRouteLogo size={36} />
           </Link>
 
           <nav className="flex items-center gap-1">

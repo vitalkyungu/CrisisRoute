@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import {
-  AlertTriangle,
   Bot,
   MapPin,
   Radio,
@@ -9,6 +8,7 @@ import {
   Zap,
   ArrowRight,
 } from "lucide-react";
+import CrisisRouteLogo, { BRAND, CrisisRouteLogoStacked } from "../components/CrisisRouteLogo";
 
 const FEATURES = [
   {
@@ -49,12 +49,9 @@ export default function Landing() {
       {/* Header */}
       <header className="border-b border-slate-800/80 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 bg-red-600/20 rounded-lg flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-red-500" />
-            </div>
-            <span className="font-bold text-lg tracking-tight">CrisisRoute</span>
-          </div>
+          <Link to="/" className="hover:opacity-90 transition-opacity shrink-0">
+            <CrisisRouteLogo size={40} />
+          </Link>
           <Link
             to="/login"
             className="text-sm text-slate-400 hover:text-slate-200 transition-colors"
@@ -69,19 +66,23 @@ export default function Landing() {
         <div className="absolute inset-0 bg-gradient-to-b from-red-950/20 via-transparent to-transparent pointer-events-none" />
         <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-red-600/5 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-20 sm:pt-24 sm:pb-28 text-center">
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-10 pb-20 sm:pt-14 sm:pb-28 text-center">
+          {/* Hero logo — icon + Crisis (red) + Route (white) */}
+          <CrisisRouteLogoStacked size={96} className="mb-12 mx-auto" />
+
           <div className="inline-flex items-center gap-2 bg-red-950/40 border border-red-800/40 text-red-300 text-xs font-medium px-3 py-1.5 rounded-full mb-8">
-            <Zap className="w-3.5 h-3.5" />
+            <Zap className="w-3.5 h-3.5" style={{ color: BRAND.red }} />
             From incident to dispatch in under 60 seconds
           </div>
 
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 max-w-4xl mx-auto leading-tight">
             Coordinate disaster response{" "}
-            <span className="text-red-500">before chaos wins</span>
+            <span className="text-red-500" style={{ color: BRAND.red }}>before chaos wins</span>
           </h1>
 
           <p className="text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-            CrisisRoute is an AI-powered platform that connects volunteers to
+            <span style={{ color: BRAND.red, fontWeight: 600 }}>Crisis</span>
+            <span className="text-slate-200 font-semibold">Route</span> is an AI-powered platform that connects volunteers to
             life-saving missions — with smart routing, real-time alerts, and a
             coordinator command center built for emergencies.
           </p>
@@ -192,6 +193,7 @@ export default function Landing() {
       {/* CTA */}
       <section className="border-t border-slate-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20 text-center">
+          <CrisisRouteLogoStacked size={56} className="mb-8 mx-auto opacity-90" />
           <h2 className="text-2xl sm:text-3xl font-bold mb-4">Ready to respond?</h2>
           <p className="text-slate-400 mb-8 max-w-md mx-auto">
             Sign in with Google to access volunteer missions and the coordinator
@@ -210,10 +212,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t border-slate-800 py-8">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-500">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-red-500/70" />
-            <span>CrisisRoute — AI disaster response coordination</span>
-          </div>
+          <CrisisRouteLogo size={28} className="opacity-80" />
           <p>Powered by Gemini · Google Maps · Firebase</p>
         </div>
       </footer>
