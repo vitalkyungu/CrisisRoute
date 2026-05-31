@@ -1,0 +1,13 @@
+frontend/
+.git/
+.github/
+**/__pycache__
+**/.venv
+**/.pytest_cache
+**/*.pyc
+.env
+**/.env
+**/node_modules
+scripts/
+*.md
+backend/crisisroute-firebase-adminsdk*.json
