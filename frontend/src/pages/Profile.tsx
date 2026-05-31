@@ -6,7 +6,8 @@ import { auth, db, googleProvider } from "../lib/firebase";
 import { useAuth } from "../hooks/useAuth";
 import type { Volunteer } from "../types";
 import { useNotifications } from "../hooks/useNotifications";
-import { Loader2, Trash2, User, Mail, Globe, MapPin, ArrowLeft } from "lucide-react";
+import { Loader2, Trash2, User, Mail, Globe, MapPin, ArrowLeft, Phone } from "lucide-react";
+import { isValidE164, normalizePhone } from "../lib/phone";
 
 const SKILL_OPTIONS = [
   "medical",
@@ -49,6 +50,8 @@ export default function Profile() {
   const [languages, setLanguages] = useState<string[]>([]);
   const [preferredLang, setPreferredLang] = useState("en");
   const [availability, setAvailability] = useState(true);
+  const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState("");
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -64,6 +67,7 @@ export default function Profile() {
           setLanguages(data.languages || ["en"]);
           setPreferredLang(data.preferred_language || "en");
           setAvailability(data.availability ?? true);
+          setPhone(data.phone || "");
         }
       } catch (e: any) {
         setError(e.message || "Failed to load profile");
@@ -94,6 +98,14 @@ export default function Profile() {
     setSaving(true);
     setError("");
     setMessage("");
+    setPhoneError("");
+
+    const normalizedPhone = normalizePhone(phone);
+    if (phone.trim() && !isValidE164(normalizedPhone)) {
+      setPhoneError("Use international format, e.g. +905551234567");
+      setSaving(false);
+      return;
+    }
 
     try {
       await updateDoc(doc(db, "volunteers", currentUser.uid), {
@@ -101,6 +113,7 @@ export default function Profile() {
         languages,
         preferred_language: preferredLang,
         availability,
+        phone: normalizedPhone,
       });
       setMessage("Profile updated");
     } catch (e: any) {
@@ -163,6 +176,29 @@ export default function Profile() {
           <div className="flex items-center gap-3">
             <Mail className="w-4 h-4 text-slate-500 shrink-0" />
             <span className="text-slate-300">{user?.email || "—"}</span>
+          </div>
+          <div>
+            <label className="flex items-center gap-3 text-sm text-slate-400 mb-2" htmlFor="profile-phone">
+              <Phone className="w-4 h-4 text-slate-500 shrink-0" />
+              Mobile (SMS alerts)
+            </label>
+            <input
+              id="profile-phone"
+              type="tel"
+              value={phone}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setPhoneError("");
+              }}
+              placeholder="+1 555 123 4567"
+              className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500/70"
+              autoComplete="tel"
+            />
+            {phoneError && <p className="text-red-400 text-xs mt-1">{phoneError}</p>}
+            <p className="text-xs text-slate-600 mt-1">
+              Your personal mobile in E.164 format (e.g. +14155551234). Must differ from the
+              Twilio sender number.
+            </p>
           </div>
           {profile && (
             <>

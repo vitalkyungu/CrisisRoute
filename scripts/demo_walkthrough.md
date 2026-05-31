@@ -1,11 +1,71 @@
 # CrisisRoute — Live Demo Script (2 minutes)
 
 ## Setup (before judges arrive)
-1. Run `python scripts/seed_demo.py` to load Istanbul scenario
-2. Open two browser tabs:
-   - Tab 1: **Coordinator Command Center** (logged in as coordinator)
-   - Tab 2: **Volunteer Dashboard** (logged in as Dr. Ayşe or Sophie)
-3. Verify: Command Center shows 8 open requests, 20 available volunteers, 1 incident
+
+**Project root:** `/Volumes/LaCie/CrisisRoute`  
+Always run scripts from the repo root (not `backend/`).
+
+```bash
+cd /Volumes/LaCie/CrisisRoute
+
+export GOOGLE_APPLICATION_CREDENTIALS=/Volumes/LaCie/CrisisRoute/backend/crisisroute-firebase-adminsdk-fbsvc-f5dab70143.json
+
+# Terminal 1 — backend (must watch agent/ too — use start script)
+/Volumes/LaCie/CrisisRoute/scripts/start_backend.sh
+
+# Or manually:
+# cd /Volumes/LaCie/CrisisRoute/backend
+# uvicorn src.main:app --reload --port 8080 --reload-dir . --reload-dir ../agent
+
+# Terminal 2 — frontend
+cd /Volumes/LaCie/CrisisRoute/frontend
+npm run dev
+```
+
+**Live disasters (replaces Istanbul mock):**
+
+```bash
+cd /Volumes/LaCie/CrisisRoute
+export GOOGLE_APPLICATION_CREDENTIALS=/Volumes/LaCie/CrisisRoute/backend/crisisroute-firebase-adminsdk-fbsvc-f5dab70143.json
+
+python3 scripts/ingest_live_disasters.py
+curl -X POST http://localhost:8080/api/agent/run
+```
+
+Command Center also auto-syncs GDACS on load (**Sync Live Disasters** button).
+
+**Demo mock scenario (Istanbul earthquake):**
+
+```bash
+python3 scripts/seed_demo.py
+curl -X POST http://localhost:8080/api/agent/run
+```
+
+**Optional — assign a mission to your Google account** (instead of using demo volunteers):
+
+```bash
+cd /Volumes/LaCie/CrisisRoute
+export GOOGLE_APPLICATION_CREDENTIALS=/Volumes/LaCie/CrisisRoute/backend/crisisroute-firebase-adminsdk-fbsvc-f5dab70143.json
+
+python3 scripts/assign_mission_to_me.py --email vitalkabange77@gmail.com --create --near-me
+```
+
+**Browser tabs:**
+- Tab 1: **Coordinator Command Center** — http://localhost:5173/coordinator
+- Tab 2: **Volunteer Dashboard** — http://localhost:5173/volunteer (sign in with your Google account)
+
+**Verify:** Command Center shows open requests + missions; Volunteer tab shows assigned mission after accept → map shows safe route.
+
+**If agent returns `'async for' requires __aiter__`:** the backend is running stale agent code. Stop uvicorn (Ctrl+C) and restart with `scripts/start_backend.sh` (watches `agent/` for changes).
+
+**Test welcome SMS** (after saving your **personal** mobile on Profile — not the Twilio `+1206…` sender):
+
+```bash
+curl -s http://localhost:8080/health   # twilio_configured should be true
+curl -X POST http://localhost:8080/api/alerts/welcome/YOUR_FIREBASE_UID
+```
+
+On a Twilio trial account, the recipient number must be [verified in the Twilio console](https://console.twilio.com/us1/develop/phone-numbers/manage/verified).
 
 ---
 

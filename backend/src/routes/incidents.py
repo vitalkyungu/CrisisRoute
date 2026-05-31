@@ -24,9 +24,12 @@ async def get_incident(incident_id: str):
 
 
 @router.post("/poll")
-async def trigger_feed_poll():
-    """Manually trigger GDACS feed poll (also runs on Cloud Scheduler)."""
-    result = await ingest_incidents()
+async def trigger_feed_poll(replace_mock: bool = True, generate_aid: bool = True):
+    """Poll GDACS RSS for live global disasters and sync to Firestore."""
+    result = await ingest_incidents(
+        replace_mock=replace_mock,
+        generate_aid_requests=generate_aid,
+    )
     return result
 
 

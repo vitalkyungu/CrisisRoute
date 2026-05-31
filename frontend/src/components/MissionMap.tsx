@@ -1,10 +1,35 @@
 import { useEffect, useRef, useState } from "react";
+import { kmBetween } from "../lib/maps";
 import type { Mission, Incident } from "../types";
+
+/** Only draw danger zone when the incident is near the volunteer or destination. */
+function relevantIncident(
+  incident: Incident | null,
+  volunteerLocation: { lat: number; lng: number } | null,
+  destination?: { lat: number; lng: number } | null
+): Incident | null {
+  if (!incident) return null;
+  const epicenter = { lat: incident.latitude, lng: incident.longitude };
+  const maxKm = 75;
+  if (volunteerLocation && kmBetween(epicenter, volunteerLocation) <= maxKm) {
+    return incident;
+  }
+  if (destination && kmBetween(epicenter, destination) <= maxKm) {
+    return incident;
+  }
+  return null;
+}
 
 interface MissionMapProps {
   mission: Mission;
   incident: Incident | null;
   volunteerLocation: { lat: number; lng: number } | null;
+  destination?: { lat: number; lng: number; label?: string } | null;
+  loadingRoute?: boolean;
+  /** Override map height — use `h-full min-h-[360px]` in flex layouts */
+  mapClassName?: string;
+  /** When browsing the disaster list, always pan to the selected incident */
+  focusSelectedIncident?: boolean;
 }
 
 /**
@@ -12,7 +37,15 @@ interface MissionMapProps {
  * Shows the volunteer's route avoiding the danger zone on a Google Map.
  * Judges immediately understand "the agent sent this volunteer AROUND the danger zone."
  */
-export default function MissionMap({ mission, incident, volunteerLocation }: MissionMapProps) {
+export default function MissionMap({
+  mission,
+  incident,
+  volunteerLocation,
+  destination,
+  loadingRoute = false,
+  mapClassName,
+  focusSelectedIncident = false,
+}: MissionMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const overlaysRef = useRef<(google.maps.Marker | google.maps.Circle | google.maps.Polyline)[]>([]);
   const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -57,12 +90,23 @@ export default function MissionMap({ mission, incident, volunteerLocation }: Mis
     };
   }, []);
 
+  function displayIncident(): Incident | null {
+    if (!incident) return null;
+    if (focusSelectedIncident) return incident;
+    return relevantIncident(incident, volunteerLocation, destination ?? null);
+  }
+
   function initMap() {
     if (!mapRef.current) return;
 
-    const center = incident
-      ? { lat: incident.latitude, lng: incident.longitude }
-      : { lat: 41.0082, lng: 28.9784 };
+    const zone = displayIncident();
+    const center = zone
+      ? { lat: zone.latitude, lng: zone.longitude }
+      : volunteerLocation
+        ? volunteerLocation
+        : destination
+          ? destination
+          : { lat: 41.0082, lng: 28.9784 };
 
     const mapInstance = new google.maps.Map(mapRef.current, {
       center,
@@ -79,11 +123,13 @@ export default function MissionMap({ mission, incident, volunteerLocation }: Mis
   function renderOverlays(mapInstance: google.maps.Map) {
     clearOverlays();
 
+    const zone = displayIncident();
+
     // --- DANGER ZONE: Red semi-transparent polygon around incident epicenter ---
-    if (incident) {
+    if (zone) {
       const dangerCircle = new google.maps.Circle({
-        center: { lat: incident.latitude, lng: incident.longitude },
-        radius: incident.radius_km * 1000,
+        center: { lat: zone.latitude, lng: zone.longitude },
+        radius: zone.radius_km * 1000,
         fillColor: "#dc2626",
         fillOpacity: 0.15,
         strokeColor: "#dc2626",
@@ -94,7 +140,7 @@ export default function MissionMap({ mission, incident, volunteerLocation }: Mis
       overlaysRef.current.push(dangerCircle);
 
       const epicenterMarker = new google.maps.Marker({
-        position: { lat: incident.latitude, lng: incident.longitude },
+        position: { lat: zone.latitude, lng: zone.longitude },
         map: mapInstance,
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
@@ -104,7 +150,7 @@ export default function MissionMap({ mission, incident, volunteerLocation }: Mis
           strokeColor: "#ffffff",
           strokeWeight: 2,
         },
-        title: `⚠️ ${incident.title}`,
+        title: `⚠️ ${zone.title}`,
       });
       overlaysRef.current.push(epicenterMarker);
     }
@@ -150,9 +196,11 @@ export default function MissionMap({ mission, incident, volunteerLocation }: Mis
       overlaysRef.current.push(routeGlow);
 
       if (path.length > 0) {
-        const destination = path[path.length - 1];
+        const destPoint = destination
+          ? { lat: destination.lat, lng: destination.lng }
+          : path[path.length - 1];
         const destinationMarker = new google.maps.Marker({
-          position: destination,
+          position: destPoint,
           map: mapInstance,
           icon: {
             path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
@@ -162,7 +210,7 @@ export default function MissionMap({ mission, incident, volunteerLocation }: Mis
             strokeColor: "#ffffff",
             strokeWeight: 2,
           },
-          title: "Destination",
+          title: destination?.label || "Destination",
         });
         overlaysRef.current.push(destinationMarker);
       }
@@ -170,17 +218,46 @@ export default function MissionMap({ mission, incident, volunteerLocation }: Mis
       const bounds = new google.maps.LatLngBounds();
       path.forEach((p) => bounds.extend(p));
       if (volunteerLocation) bounds.extend(volunteerLocation);
-      if (incident) bounds.extend({ lat: incident.latitude, lng: incident.longitude });
+      if (destination) bounds.extend(destination);
+      if (zone) bounds.extend({ lat: zone.latitude, lng: zone.longitude });
       mapInstance.fitBounds(bounds, 60);
-    } else if (incident) {
-      fitToIncidentZone(mapInstance, incident, volunteerLocation);
+    } else if (destination) {
+      const destMarker = new google.maps.Marker({
+        position: destination,
+        map: mapInstance,
+        icon: {
+          path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+          scale: 8,
+          fillColor: "#22c55e",
+          fillOpacity: 0.9,
+          strokeColor: "#ffffff",
+          strokeWeight: 2,
+        },
+        title: destination.label || "Destination",
+      });
+      overlaysRef.current.push(destMarker);
+
+      const bounds = new google.maps.LatLngBounds();
+      bounds.extend(destination);
+      if (volunteerLocation) bounds.extend(volunteerLocation);
+      if (zone) {
+        const circle = new google.maps.Circle({
+          center: { lat: zone.latitude, lng: zone.longitude },
+          radius: zone.radius_km * 1000,
+        });
+        const zoneBounds = circle.getBounds();
+        if (zoneBounds) bounds.union(zoneBounds);
+      }
+      mapInstance.fitBounds(bounds, 60);
+    } else if (zone) {
+      fitToIncidentZone(mapInstance, zone, volunteerLocation);
     }
   }
 
   // Re-render overlays when mission data updates
   useEffect(() => {
     if (map) renderOverlays(map);
-  }, [map, mission.route_polyline, incident, volunteerLocation]);
+  }, [map, mission.route_polyline, incident?.id, volunteerLocation, destination, focusSelectedIncident]);
 
   if (error) {
     return (
@@ -205,7 +282,16 @@ export default function MissionMap({ mission, incident, volunteerLocation }: Mis
 
   return (
     <div className="relative h-full">
-      <div ref={mapRef} className="w-full h-72 md:h-96 rounded-lg" />
+      <div ref={mapRef} className={mapClassName ?? "w-full h-72 md:h-96 rounded-lg"} />
+      {loadingRoute && (
+        <div className="absolute inset-0 bg-slate-900/70 rounded-lg flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-8 h-8 border-2 border-green-500/30 border-t-green-500 rounded-full animate-spin mx-auto mb-2" />
+            <p className="text-sm text-slate-300">Calculating safe route…</p>
+            <p className="text-xs text-slate-500 mt-1">Avoiding danger zone</p>
+          </div>
+        </div>
+      )}
       {/* Legend overlay */}
       <div className="absolute bottom-3 left-3 bg-slate-900/90 backdrop-blur-sm rounded-lg p-2 text-xs space-y-1">
         <div className="flex items-center gap-2">

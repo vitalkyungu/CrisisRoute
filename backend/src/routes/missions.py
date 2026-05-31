@@ -35,6 +35,17 @@ async def get_mission(mission_id: str):
     return {"id": doc.id, **doc.to_dict()}
 
 
+@router.post("/{mission_id}/route")
+async def calculate_route(mission_id: str):
+    """Calculate and save a safe route that avoids the incident danger zone."""
+    from src.services.routing import calculate_mission_route
+
+    result = calculate_mission_route(mission_id)
+    if result.get("error"):
+        raise HTTPException(status_code=400, detail=result["error"])
+    return {"status": "route_calculated", **result}
+
+
 @router.put("/{mission_id}/status")
 async def update_mission_status(
     mission_id: str, status: str, background_tasks: BackgroundTasks
@@ -61,6 +72,9 @@ async def update_mission_status(
 
     doc_ref.update(update_data)
 
+    if status == "accepted" and not mission.get("route_polyline"):
+        background_tasks.add_task(_calculate_route, mission_id)
+
     # Free the volunteer if mission is terminal
     if status in ("completed", "cancelled"):
         db.collection("volunteers").document(mission["volunteer_id"]).update(
@@ -81,6 +95,15 @@ async def update_mission_status(
         "mission_id": mission_id,
         "volunteer_freed": status in ("completed", "cancelled"),
     }
+
+
+async def _calculate_route(mission_id: str):
+    """Background task: compute safe route after volunteer accepts."""
+    try:
+        from src.services.routing import calculate_mission_route
+        calculate_mission_route(mission_id)
+    except Exception:
+        pass
 
 
 async def _trigger_reassignment(mission_id: str):

@@ -6,13 +6,20 @@ interface CoordinatorMapProps {
   volunteers: Volunteer[];
   missions: Mission[];
   focusIncidentId?: string | null;
+  onIncidentSelect?: (incidentId: string) => void;
 }
 
 /**
  * Live command center map showing all incidents (red zones),
  * volunteers (colored dots by status), and active routes.
  */
-export default function CoordinatorMap({ incidents, volunteers, missions, focusIncidentId }: CoordinatorMapProps) {
+export default function CoordinatorMap({
+  incidents,
+  volunteers,
+  missions,
+  focusIncidentId,
+  onIncidentSelect,
+}: CoordinatorMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
@@ -41,7 +48,7 @@ export default function CoordinatorMap({ incidents, volunteers, missions, focusI
 
   useEffect(() => {
     if (mapInstanceRef.current) updateOverlays();
-  }, [incidents, volunteers, missions]);
+  }, [incidents, volunteers, missions, onIncidentSelect]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -111,6 +118,9 @@ export default function CoordinatorMap({ incidents, volunteers, missions, focusI
         },
         title: inc.title,
       });
+      if (onIncidentSelect) {
+        marker.addListener("click", () => onIncidentSelect(inc.id));
+      }
       markersRef.current.push(marker);
     });
 

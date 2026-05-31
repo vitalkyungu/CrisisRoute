@@ -15,7 +15,11 @@ export const api = {
   incidents: {
     list: (status = "active") => request<any[]>(`/incidents/?status=${status}`),
     get: (id: string) => request<any>(`/incidents/${id}`),
-    poll: () => request<any>("/incidents/poll", { method: "POST" }),
+    poll: (replaceMock = true) =>
+      request<any>(
+        `/incidents/poll?replace_mock=${replaceMock}&generate_aid=true`,
+        { method: "POST" }
+      ),
   },
   volunteers: {
     list: (availableOnly = false) =>
@@ -39,6 +43,8 @@ export const api = {
     get: (id: string) => request<any>(`/missions/${id}`),
     updateStatus: (id: string, status: string) =>
       request<any>(`/missions/${id}/status?status=${status}`, { method: "PUT" }),
+    calculateRoute: (id: string) =>
+      request<any>(`/missions/${id}/route`, { method: "POST" }),
     createAidRequest: (data: any) =>
       request<any>("/missions/aid-request", {
         method: "POST",
@@ -58,5 +64,9 @@ export const api = {
     logs: (missionId?: string) =>
       request<any[]>(`/alerts/logs${missionId ? `?mission_id=${missionId}` : ""}`),
     stats: () => request<any>("/alerts/stats"),
+    sendWelcome: (volunteerId: string) =>
+      request<any>(`/alerts/welcome/${volunteerId}`, { method: "POST" }),
+    sendMission: (missionId: string) =>
+      request<any>(`/alerts/mission/${missionId}`, { method: "POST" }),
   },
 };

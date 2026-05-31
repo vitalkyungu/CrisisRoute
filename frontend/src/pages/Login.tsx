@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { AlertTriangle, Loader2, ArrowLeft } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 
 export default function Login() {
@@ -24,6 +25,14 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="card max-w-md w-full text-center">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 mb-6 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Link>
+
         <div className="flex justify-center mb-6">
           <div className="w-20 h-20 bg-red-600/20 rounded-full flex items-center justify-center">
             <AlertTriangle className="w-10 h-10 text-red-500" />

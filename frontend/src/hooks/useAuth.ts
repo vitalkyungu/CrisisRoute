@@ -14,6 +14,8 @@ interface AuthState {
   loading: boolean;
   role: UserRole;
   hasProfile: boolean;
+  /** Demo mode: every signed-in user can open Command Center + volunteer view */
+  canAccessCommandCenter: boolean;
 }
 
 export function useAuth() {
@@ -22,6 +24,7 @@ export function useAuth() {
     loading: true,
     role: "volunteer",
     hasProfile: false,
+    canAccessCommandCenter: false,
   });
 
   useEffect(() => {
@@ -43,9 +46,21 @@ export function useAuth() {
           console.warn("Failed to check profile (Firestore may not be ready):", e);
         }
 
-        setState({ user, loading: false, role, hasProfile });
+        setState({
+          user,
+          loading: false,
+          role,
+          hasProfile,
+          canAccessCommandCenter: hasProfile,
+        });
       } else {
-        setState({ user: null, loading: false, role: "volunteer", hasProfile: false });
+        setState({
+          user: null,
+          loading: false,
+          role: "volunteer",
+          hasProfile: false,
+          canAccessCommandCenter: false,
+        });
       }
     });
 

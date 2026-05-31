@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
+import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import VolunteerDashboard from "./pages/VolunteerDashboard";
 import CoordinatorDashboard from "./pages/CoordinatorDashboard";
@@ -7,16 +8,8 @@ import ProfileSetup from "./pages/ProfileSetup";
 import Profile from "./pages/Profile";
 import Layout from "./components/Layout";
 
-function CoordinatorRoute() {
-  const { role } = useAuth();
-  if (role !== "coordinator") {
-    return <Navigate to="/volunteer" replace />;
-  }
-  return <CoordinatorDashboard />;
-}
-
 export default function App() {
-  const { user, loading, hasProfile, role } = useAuth();
+  const { user, loading, hasProfile } = useAuth();
 
   if (loading) {
     return (
@@ -30,7 +23,13 @@ export default function App() {
   }
 
   if (!user) {
-    return <Login />;
+    return (
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    );
   }
 
   if (!hasProfile) {
@@ -49,8 +48,8 @@ export default function App() {
         <Route path="/setup" element={<ProfileSetup />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/volunteer" element={<VolunteerDashboard />} />
-        <Route path="/coordinator" element={<CoordinatorRoute />} />
-        <Route path="*" element={<Navigate to={role === "coordinator" ? "/coordinator" : "/volunteer"} replace />} />
+        <Route path="/coordinator" element={<CoordinatorDashboard />} />
+        <Route path="*" element={<Navigate to="/volunteer" replace />} />
       </Routes>
     </Layout>
   );

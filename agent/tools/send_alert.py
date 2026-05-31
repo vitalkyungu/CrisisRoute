@@ -81,7 +81,10 @@ def send_alert(
     volunteer = vol_doc.to_dict()
     delivery_result = {"channel": "none", "status": "no_contact_method"}
 
-    if volunteer.get("fcm_token"):
+    fcm_token = (volunteer.get("fcm_token") or "").strip()
+    phone = (volunteer.get("phone") or "").strip()
+
+    if fcm_token:
         try:
             message = messaging.Message(
                 notification=messaging.Notification(
@@ -93,14 +96,33 @@ def send_alert(
                     "type": "mission_assignment",
                     "language": target_language,
                 },
-                token=volunteer["fcm_token"],
+                token=fcm_token,
             )
             response = messaging.send(message)
             delivery_result = {"channel": "fcm", "status": "sent", "message_id": response}
         except Exception as e:
             delivery_result = {"channel": "fcm", "status": "failed", "error": str(e)}
 
-    elif volunteer.get("phone"):
+    if delivery_result.get("status") != "sent" and phone:
+        try:
+            from twilio.rest import Client
+
+            if not os.getenv("TWILIO_ACCOUNT_SID"):
+                raise RuntimeError("Twilio not configured")
+
+            twilio_client = Client(
+                os.getenv("TWILIO_ACCOUNT_SID"),
+                os.getenv("TWILIO_AUTH_TOKEN"),
+            )
+            sms = twilio_client.messages.create(
+                body=f"CrisisRoute Mission: {translated_briefing[:300]}",
+                from_=os.getenv("TWILIO_PHONE_NUMBER"),
+                to=phone,
+            )
+            delivery_result = {"channel": "sms", "status": "sent", "message_sid": sms.sid}
+        except Exception as e:
+            delivery_result = {"channel": "sms", "status": "failed", "error": str(e)}
+    elif not fcm_token and phone:
         try:
             from twilio.rest import Client
 
@@ -111,7 +133,7 @@ def send_alert(
             sms = twilio_client.messages.create(
                 body=f"CrisisRoute Mission: {translated_briefing[:300]}",
                 from_=os.getenv("TWILIO_PHONE_NUMBER"),
-                to=volunteer["phone"],
+                to=phone,
             )
             delivery_result = {"channel": "sms", "status": "sent", "message_sid": sms.sid}
         except Exception as e:

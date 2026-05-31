@@ -102,8 +102,145 @@ After processing all requests, provide a summary:
 - The briefing MUST be in English — the send_alert tool handles translation automatically
 """
 
+# Default to flash-lite — separate free-tier quota from gemini-2.0-flash
+AGENT_MODEL = os.getenv("AGENT_MODEL", "gemini-2.0-flash-lite")
+FORCE_DETERMINISTIC = os.getenv("AGENT_USE_DETERMINISTIC", "").lower() in ("1", "true", "yes")
+
+
+def _build_briefing(req: dict, incident: dict | None) -> str:
+    title = req.get("title", "Aid request")
+    desc = req.get("description", "")[:200]
+    lat = req.get("latitude", 41.008)
+    lng = req.get("longitude", 28.978)
+    inc_title = incident.get("title", "Active disaster") if incident else "Active disaster"
+    return (
+        f"MISSION BRIEFING\n"
+        f"================\n"
+        f"Incident: {inc_title}\n"
+        f"Location: {title} ({lat}, {lng})\n"
+        f"Need: {desc}\n"
+        f"Your role: Report immediately and follow coordinator instructions on site.\n"
+        f"⚠️ Safety: Route avoids the danger zone. Do not enter red zone."
+    )
+
+
+async def run_agent_loop_deterministic() -> dict:
+    """Run the dispatch protocol directly via tools (no Gemini calls).
+
+    Used when API quota is exhausted or AGENT_USE_DETERMINISTIC=1.
+    Same steps as the ADK agent: triage → match → assign → route → alert.
+    """
+    from src.services.firebase import get_db
+
+    situation = get_active_incidents()
+    requests = situation.get("aid_requests", [])
+    incidents = {i["id"]: i for i in situation.get("incidents", [])}
+    default_incident_id = (
+        situation["incidents"][0]["id"] if situation.get("incidents") else "EQ-2026-istanbul-72"
+    )
+
+    assigned_volunteers: set[str] = set()
+    missions_created: list[dict] = []
+    skipped: list[str] = []
+    tools_invoked: list[str] = ["get_active_incidents"]
+
+    for req in requests:
+        req_id = req["id"]
+        lat = req.get("latitude", 41.008)
+        lng = req.get("longitude", 28.978)
+        skills = req.get("required_skills", [])
+        radius = 100.0 if req.get("urgency") == "critical" else 50.0
+        inc_id = req.get("incident_id") or default_incident_id
+        incident = incidents.get(inc_id)
+
+        tools_invoked.append("query_volunteers")
+        match_result = query_volunteers(
+            required_skills=skills,
+            latitude=lat,
+            longitude=lng,
+            radius_km=radius,
+            preferred_language="tr",
+        )
+        candidates = [
+            v for v in match_result.get("volunteers", [])
+            if v["id"] not in assigned_volunteers
+        ]
+
+        assigned = False
+        briefing = _build_briefing(req, incident)
+
+        for volunteer in candidates:
+            tools_invoked.append("assign_mission")
+            assign_result = assign_mission(
+                volunteer_id=volunteer["id"],
+                incident_id=inc_id,
+                aid_request_id=req_id,
+                briefing=briefing,
+            )
+            if assign_result.get("error"):
+                continue
+
+            mission_id = assign_result["mission_id"]
+            assigned_volunteers.add(volunteer["id"])
+
+            tools_invoked.append("get_safe_route")
+            get_safe_route(
+                volunteer_id=volunteer["id"],
+                destination_lat=lat,
+                destination_lng=lng,
+                incident_id=inc_id,
+            )
+
+            tools_invoked.append("send_alert")
+            send_alert(
+                volunteer_id=volunteer["id"],
+                mission_id=mission_id,
+                briefing=briefing,
+                target_language=volunteer.get("preferred_language", "en"),
+            )
+
+            missions_created.append({
+                "mission_id": mission_id,
+                "volunteer": volunteer.get("display_name"),
+                "request": req.get("title", req_id),
+            })
+            assigned = True
+            break
+
+        if not assigned:
+            skipped.append(req.get("title", req_id))
+
+    summary_parts = [
+        f"Deterministic dispatch: {len(missions_created)} mission(s) assigned.",
+    ]
+    if skipped:
+        summary_parts.append(f"Skipped {len(skipped)} request(s) — no available volunteers.")
+    summary = " ".join(summary_parts)
+
+    db = get_db()
+    db.collection("agent_logs").add({
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "trigger": "deterministic_loop",
+        "result_summary": summary,
+        "missions_created": missions_created,
+        "skipped": skipped,
+        "tools_invoked": tools_invoked[:50],
+        "tool_call_count": len(tools_invoked),
+    })
+
+    return {
+        "summary": summary,
+        "mode": "deterministic",
+        "missions_assigned": len(missions_created),
+        "missions": missions_created,
+        "skipped": skipped,
+        "tools_invoked": len(tools_invoked),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 crisisroute_agent = Agent(
-    model="gemini-2.0-flash",
+    model=AGENT_MODEL,
     name="CrisisRoute",
     description=(
         "Autonomous disaster response coordinator. When triggered, it processes all "
@@ -131,7 +268,11 @@ async def run_agent_loop() -> dict:
     - POST /api/agent/run endpoint
     
     The agent will process ALL open aid requests in one pass.
+    Falls back to deterministic tool dispatch if Gemini quota is exhausted.
     """
+    if FORCE_DETERMINISTIC:
+        return await run_agent_loop_deterministic()
+
     from google.adk.runners import InMemoryRunner
     from google.genai import types
 
@@ -143,24 +284,37 @@ async def run_agent_loop() -> dict:
     trigger_message = types.Content(
         role="user",
         parts=[types.Part.from_text(
-            "Execute the full disaster response protocol now. "
-            "Process all open aid requests: triage, match volunteers, assign missions, "
-            "route them safely, and send alerts in their language. "
-            "Do not ask for confirmation — act immediately and report results."
+            text=(
+                "Execute the full disaster response protocol now. "
+                "Process all open aid requests: triage, match volunteers, assign missions, "
+                "route them safely, and send alerts in their language. "
+                "Do not ask for confirmation — act immediately and report results."
+            )
         )],
     )
 
     result_text = ""
     tool_calls_made = []
 
-    async for event in runner.run(
-        user_id="system", session_id=session.id, new_message=trigger_message
-    ):
-        if event.is_final_response() and event.content:
-            result_text = event.content.parts[0].text
-        elif hasattr(event, "tool_calls") and event.tool_calls:
-            for tc in event.tool_calls:
-                tool_calls_made.append(tc.name if hasattr(tc, "name") else str(tc))
+    try:
+        async for event in runner.run_async(
+            user_id="system", session_id=session.id, new_message=trigger_message
+        ):
+            if event.is_final_response() and event.content:
+                result_text = event.content.parts[0].text
+            elif hasattr(event, "tool_calls") and event.tool_calls:
+                for tc in event.tool_calls:
+                    tool_calls_made.append(tc.name if hasattr(tc, "name") else str(tc))
+    except Exception as exc:
+        err = str(exc).lower()
+        if "429" in err or "resource_exhausted" in err or "quota" in err:
+            fallback = await run_agent_loop_deterministic()
+            fallback["gemini_fallback_reason"] = (
+                "Gemini API quota exceeded — ran deterministic dispatch instead. "
+                "Set AGENT_MODEL=gemini-2.0-flash-lite or enable billing for full ADK loop."
+            )
+            return fallback
+        raise
 
     from src.services.firebase import get_db
 
@@ -168,6 +322,7 @@ async def run_agent_loop() -> dict:
     log_entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "trigger": "autonomous_loop",
+        "model": AGENT_MODEL,
         "result_summary": result_text[:500] if result_text else "No response generated",
         "full_result": result_text,
         "tools_invoked": tool_calls_made[:50],
@@ -177,6 +332,8 @@ async def run_agent_loop() -> dict:
 
     return {
         "summary": result_text[:500] if result_text else "Agent completed with no text response",
+        "mode": "adk",
+        "model": AGENT_MODEL,
         "tools_invoked": len(tool_calls_made),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
@@ -198,15 +355,17 @@ async def run_reassignment(mission_id: str, reason: str = "volunteer_declined") 
     message = types.Content(
         role="user",
         parts=[types.Part.from_text(
-            f"Mission {mission_id} needs re-assignment because: {reason}. "
-            f"First call update_mission_status to cancel mission {mission_id} with reason '{reason}'. "
-            f"Then find the aid request from that mission, query for the next best available volunteer, "
-            f"and assign a new mission. Route them and send the alert."
+            text=(
+                f"Mission {mission_id} needs re-assignment because: {reason}. "
+                f"First call update_mission_status to cancel mission {mission_id} with reason '{reason}'. "
+                f"Then find the aid request from that mission, query for the next best available volunteer, "
+                f"and assign a new mission. Route them and send the alert."
+            )
         )],
     )
 
     result_text = ""
-    async for event in runner.run(
+    async for event in runner.run_async(
         user_id="system", session_id=session.id, new_message=message
     ):
         if event.is_final_response() and event.content:

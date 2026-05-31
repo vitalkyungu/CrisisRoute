@@ -9,19 +9,21 @@ import {
 } from "lucide-react";
 
 export default function Layout({ children }: { children: ReactNode }) {
-  const { user, signOut, role } = useAuth();
+  const { user, signOut, canAccessCommandCenter } = useAuth();
   const location = useLocation();
 
   const navItems = [
-    { path: "/volunteer", label: "My Missions", icon: MapPin, roles: ["volunteer", "coordinator"] as const },
-    { path: "/coordinator", label: "Command Center", icon: Radio, roles: ["coordinator"] as const },
-  ].filter((item) => item.roles.includes(role));
+    { path: "/volunteer", label: "My Missions", icon: MapPin },
+    ...(canAccessCommandCenter
+      ? [{ path: "/coordinator", label: "Command Center", icon: Radio }]
+      : []),
+  ];
 
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-slate-800 border-b border-slate-700 px-4 py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link to={role === "coordinator" ? "/coordinator" : "/volunteer"} className="flex items-center gap-2">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <Link to="/volunteer" className="flex items-center gap-2">
             <AlertTriangle className="w-6 h-6 text-red-500" />
             <span className="text-lg font-bold">CrisisRoute</span>
           </Link>
@@ -62,7 +64,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
+      <main className="flex-1 w-full max-w-6xl mx-auto px-4 sm:px-5 py-4">
         {children}
       </main>
     </div>

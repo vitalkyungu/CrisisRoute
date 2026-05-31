@@ -8,9 +8,8 @@ export interface Incident {
   longitude: number;
   radius_km: number;
   source: string;
-  detected_at: string;
-  status: "active" | "resolved";
-}
+  source?: string;
+  live?: boolean;
 
 export interface Volunteer {
   id: string;

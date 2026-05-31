@@ -1,3 +1,20 @@
+import sys
+from pathlib import Path
+
+# Project root + backend must be on path for `agent.*` and `src.*` imports
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+for path in (PROJECT_ROOT, BACKEND_ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+from dotenv import load_dotenv
+
+# Load backend/.env first (Twilio, Gemini, etc.)
+load_dotenv(BACKEND_ROOT / ".env", override=True)
+# Optional repo-root .env — do not override keys already set
+load_dotenv(PROJECT_ROOT / ".env", override=False)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -29,4 +46,13 @@ app.include_router(agent_trigger.router, prefix="/api/agent", tags=["Agent"])
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "crisisroute-backend"}
+    import os
+    return {
+        "status": "healthy",
+        "service": "crisisroute-backend",
+        "twilio_configured": bool(
+            os.getenv("TWILIO_ACCOUNT_SID")
+            and os.getenv("TWILIO_AUTH_TOKEN")
+            and os.getenv("TWILIO_PHONE_NUMBER")
+        ),
+    }

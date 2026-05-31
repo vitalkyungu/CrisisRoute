@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "../lib/firebase";
+import { api } from "../lib/api";
+import { isValidE164, normalizePhone } from "../lib/phone";
 import { useNotifications } from "../hooks/useNotifications";
-import { useAuth } from "../hooks/useAuth";
-import { Loader2 } from "lucide-react";
+import { Loader2, Phone, MessageSquare } from "lucide-react";
 
 const SKILL_OPTIONS = [
   "medical",
@@ -32,10 +33,11 @@ const LANGUAGE_OPTIONS = [
 ];
 
 export default function ProfileSetup() {
-  const { role } = useAuth();
   const [skills, setSkills] = useState<string[]>([]);
   const [languages, setLanguages] = useState<string[]>(["en"]);
   const [preferredLang, setPreferredLang] = useState("en");
+  const [phone, setPhone] = useState("");
+  const [phoneError, setPhoneError] = useState("");
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [error, setError] = useState("");
@@ -56,6 +58,13 @@ export default function ProfileSetup() {
   const handleSubmit = async () => {
     const user = auth.currentUser;
     if (!user) return;
+
+    setPhoneError("");
+    const normalizedPhone = normalizePhone(phone);
+    if (phone.trim() && !isValidE164(normalizedPhone)) {
+      setPhoneError("Enter a valid number in international format, e.g. +905551234567");
+      return;
+    }
 
     setSaving(true);
     setStatusMsg("Getting your location...");
@@ -90,7 +99,7 @@ export default function ProfileSetup() {
         uid: user.uid,
         display_name: user.displayName || "",
         email: user.email || "",
-        phone: "",
+        phone: normalizedPhone,
         skills,
         languages,
         preferred_language: preferredLang,
@@ -111,9 +120,18 @@ export default function ProfileSetup() {
       setStatusMsg("Enabling notifications...");
       await saveFcmToken(user.uid);
 
+      if (normalizedPhone) {
+        setStatusMsg("Sending welcome SMS...");
+        try {
+          await api.alerts.sendWelcome(user.uid);
+        } catch {
+          // Non-blocking — Twilio may be unconfigured in dev
+        }
+      }
+
       setStatusMsg("Done!");
       setTimeout(() => {
-        window.location.href = role === "coordinator" ? "/coordinator" : "/volunteer";
+        window.location.href = "/volunteer";
       }, 300);
     } catch (e: any) {
       console.error("Profile save error:", e);
@@ -185,6 +203,42 @@ export default function ProfileSetup() {
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="card mb-6 border-slate-600/50">
+        <div className="flex items-center gap-2 mb-1">
+          <MessageSquare className="w-5 h-5 text-blue-400" />
+          <h2 className="text-lg font-semibold">SMS Alerts</h2>
+        </div>
+        <p className="text-sm text-slate-500 mb-4">
+          Add your personal mobile number to receive mission briefings by text when push
+          notifications aren't available. Use international format with country code — not a
+          Twilio or business line.
+        </p>
+        <label className="text-sm text-slate-400 block mb-2" htmlFor="phone">
+          Mobile number <span className="text-slate-600">(optional)</span>
+        </label>
+        <div className="relative">
+          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+          <input
+            id="phone"
+            type="tel"
+            value={phone}
+            onChange={(e) => {
+              setPhone(e.target.value);
+              setPhoneError("");
+            }}
+            placeholder="+1 555 123 4567"
+            className="w-full bg-slate-900 border border-slate-600 rounded-lg pl-10 pr-3 py-2.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500/70 focus:ring-1 focus:ring-blue-500/30"
+            autoComplete="tel"
+          />
+        </div>
+        {phoneError && (
+          <p className="text-red-400 text-xs mt-2">{phoneError}</p>
+        )}
+        <p className="text-xs text-slate-600 mt-2">
+          Example: +33612345678 (France), +905551234567 (Turkey), +14155552671 (US)
+        </p>
       </div>
 
       <button

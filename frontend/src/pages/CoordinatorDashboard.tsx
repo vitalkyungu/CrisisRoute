@@ -4,6 +4,7 @@ import { db } from "../lib/firebase";
 import { api } from "../lib/api";
 import type { Incident, Volunteer, Mission, AidRequest, AgentLog, AgentStatus } from "../types";
 import CoordinatorMap from "../components/CoordinatorMap";
+import IncidentDetailPanel from "../components/IncidentDetailPanel";
 import {
   AlertTriangle,
   Users,
@@ -27,6 +28,8 @@ export default function CoordinatorDashboard() {
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [agentRunning, setAgentRunning] = useState(false);
   const [agentResult, setAgentResult] = useState<string>("");
+  const [feedPolling, setFeedPolling] = useState(false);
+  const [feedResult, setFeedResult] = useState<string>("");
 
   useEffect(() => {
     const unsubs = [
@@ -80,8 +83,29 @@ export default function CoordinatorDashboard() {
   };
 
   const pollFeeds = async () => {
-    await api.incidents.poll();
+    setFeedPolling(true);
+    setFeedResult("");
+    try {
+      const result = await api.incidents.poll(true);
+      const msg = [
+        `${result.active_live_incidents ?? result.polled ?? 0} live GDACS event(s)`,
+        result.new_incidents ? `${result.new_incidents} new` : null,
+        result.aid_requests_created ? `${result.aid_requests_created} aid requests` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      setFeedResult(msg || "Feed synced");
+      await refreshAgentData();
+    } catch (e: any) {
+      setFeedResult(`Feed error: ${e.message}`);
+    } finally {
+      setFeedPolling(false);
+    }
   };
+
+  useEffect(() => {
+    pollFeeds();
+  }, []);
 
   const activeIncidents = incidents.filter((i) => i.status === "active");
   const idleVolunteers = volunteers.filter((v) => v.status === "idle" && v.availability);
@@ -90,6 +114,10 @@ export default function CoordinatorDashboard() {
   );
   const completedMissions = missions.filter((m) => m.status === "completed");
   const openAidRequests = aidRequests.filter((r) => r.status === "open");
+  const selectedIncident = activeIncidents.find((i) => i.id === selectedIncidentId) ?? null;
+  const selectedIncidentRequests = selectedIncident
+    ? openAidRequests.filter((r) => r.incident_id === selectedIncident.id).length
+    : 0;
 
   const urgencyBadge = (urgency: string) => {
     switch (urgency) {
@@ -128,14 +156,26 @@ export default function CoordinatorDashboard() {
 
   return (
     <div>
+      <div className="mb-4 rounded-lg border border-blue-800/40 bg-blue-950/20 px-4 py-3 text-sm text-slate-300">
+        <span className="font-medium text-blue-300">You</span> oversee the operation here — sync disasters and deploy the agent.
+        {" "}
+        <span className="font-medium text-red-300">Gemini</span> is the AI coordinator that triages requests and assigns volunteers.
+        Switch to <span className="font-medium text-slate-200">My Missions</span> to respond on the ground.
+      </div>
+
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Command Center</h1>
           <p className="text-slate-400 text-sm">Real-time disaster response coordination</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={pollFeeds} className="btn-secondary flex items-center gap-2 text-sm">
-            <RefreshCw className="w-4 h-4" /> Poll Feeds
+          <button
+            onClick={pollFeeds}
+            disabled={feedPolling}
+            className="btn-secondary flex items-center gap-2 text-sm"
+          >
+            <RefreshCw className={`w-4 h-4 ${feedPolling ? "animate-spin" : ""}`} />
+            {feedPolling ? "Syncing GDACS…" : "Sync Live Disasters"}
           </button>
           <button
             onClick={triggerAgent}
@@ -178,6 +218,16 @@ export default function CoordinatorDashboard() {
           {agentStatus.needs_agent_run && (
             <span className="text-xs text-amber-400 ml-auto">Agent run recommended</span>
           )}
+        </div>
+      )}
+
+      {feedResult && (
+        <div className="card border-blue-700/50 bg-blue-950/20 mb-6">
+          <div className="flex items-center gap-2 mb-1">
+            <Globe className="w-4 h-4 text-blue-400" />
+            <span className="text-sm font-medium text-blue-400">Live GDACS Feed</span>
+          </div>
+          <p className="text-sm text-slate-300">{feedResult}</p>
         </div>
       )}
 
@@ -236,8 +286,19 @@ export default function CoordinatorDashboard() {
           volunteers={volunteers}
           missions={activeMissions}
           focusIncidentId={selectedIncidentId}
+          onIncidentSelect={setSelectedIncidentId}
         />
       </div>
+
+      {selectedIncident && (
+        <div className="mb-6">
+          <IncidentDetailPanel
+            incident={selectedIncident}
+            relatedRequests={selectedIncidentRequests}
+            onClose={() => setSelectedIncidentId(null)}
+          />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div>
@@ -246,7 +307,7 @@ export default function CoordinatorDashboard() {
             {activeIncidents.map((incident) => (
               <div
                 key={incident.id}
-                onClick={() => setSelectedIncidentId(incident.id)}
+                onClick={() => setSelectedIncidentId(incident.id === selectedIncidentId ? null : incident.id)}
                 className={`card cursor-pointer transition-all hover:border-red-600/50 ${
                   selectedIncidentId === incident.id
                     ? "border-red-500/70 ring-1 ring-red-500/30"
@@ -257,8 +318,11 @@ export default function CoordinatorDashboard() {
                   <h3 className="font-medium text-sm">{incident.title}</h3>
                   <span className={severityBadge(incident.severity)}>{incident.severity}</span>
                 </div>
-                <p className="text-xs text-slate-400">
-                  {incident.type} · {incident.radius_km}km radius
+                <p className="text-xs text-slate-500 mt-1">
+                  Click for full briefing · {incident.type} · {incident.radius_km}km
+                  {incident.source === "GDACS" && (
+                    <span className="text-blue-400"> · Live</span>
+                  )}
                 </p>
               </div>
             ))}
