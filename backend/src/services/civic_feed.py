@@ -140,6 +140,19 @@ async def sync_civic_reports(
                 else:
                     updated_count += 1
 
+            # Eugene SeeClickFix feed is often empty — still seed local demo issues
+            if place == "eugene" and use_mock_fallback and len(issues) == 0:
+                mock_issues = _load_mock_issues()
+                for raw in mock_issues:
+                    payload = _normalize_mock_issue(raw)
+                    fetched += 1
+                    result = _upsert_report(db, payload)
+                    if result == "new":
+                        new_count += 1
+                    else:
+                        updated_count += 1
+                sources.append(f"mock-eugene:{len(mock_issues)}")
+
     if mock_only or (use_mock_fallback and fetched == 0):
         for raw in _load_mock_issues():
             payload = _normalize_mock_issue(raw)
@@ -169,5 +182,6 @@ async def sync_civic_reports(
         "open_reports": open_count,
         "claimed_reports": claimed_count,
         "sources": sources,
-        "used_mock": mock_only or (use_mock_fallback and "mock:" in str(sources)),
+        "used_mock": mock_only
+        or (use_mock_fallback and ("mock:" in str(sources) or "mock-eugene:" in str(sources))),
     }

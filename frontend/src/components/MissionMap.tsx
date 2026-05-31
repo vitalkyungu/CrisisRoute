@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { LocateFixed, Navigation } from "lucide-react";
 import { kmBetween } from "../lib/maps";
 import { loadGoogleMaps } from "../lib/googleMapsLoader";
 import type { Mission, Incident, CivicReport } from "../types";
@@ -33,6 +34,8 @@ interface MissionMapProps {
   focusSelectedIncident?: boolean;
   /** Civic 311 pins — amber dots only, does not affect map bounds */
   civicReports?: CivicReport[];
+  /** Called when browser geolocation returns a fresh position */
+  onLocationUpdate?: (lat: number, lng: number) => void;
 }
 
 /**
@@ -49,12 +52,17 @@ export default function MissionMap({
   mapClassName,
   focusSelectedIncident = false,
   civicReports = [],
+  onLocationUpdate,
 }: MissionMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const overlaysRef = useRef<(google.maps.Marker | google.maps.Circle | google.maps.Polyline)[]>([]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
+  const [liveLocation, setLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locating, setLocating] = useState(false);
+
+  const youAreHere = liveLocation ?? volunteerLocation;
 
   function clearOverlays() {
     overlaysRef.current.forEach((o) => o.setMap(null));
@@ -110,15 +118,15 @@ export default function MissionMap({
     const zone = displayIncident();
     const center = zone
       ? { lat: zone.latitude, lng: zone.longitude }
-      : volunteerLocation
-        ? volunteerLocation
+      : youAreHere
+        ? youAreHere
         : destination
           ? destination
           : { lat: 41.0082, lng: 28.9784 };
 
     const mapInstance = new google.maps.Map(mapRef.current, {
       center,
-      zoom: 12,
+      zoom: zone ? 12 : youAreHere ? 13 : 12,
       styles: DARK_MAP_STYLE,
       disableDefaultUI: true,
       zoomControl: true,
@@ -165,9 +173,9 @@ export default function MissionMap({
     }
 
     // --- VOLUNTEER MARKER: Blue dot showing current position ---
-    if (volunteerLocation) {
+    if (youAreHere) {
       const volunteerMarker = new google.maps.Marker({
-        position: volunteerLocation,
+        position: youAreHere,
         map: mapInstance,
         icon: {
           path: google.maps.SymbolPath.CIRCLE,
@@ -178,26 +186,67 @@ export default function MissionMap({
           strokeWeight: 2,
         },
         title: "Your location",
+        zIndex: 100,
       });
       overlaysRef.current.push(volunteerMarker);
     }
 
-    // --- CIVIC PINS: Amber dots (no circles, no fitBounds) ---
+    // --- CIVIC PINS + directions to checked-out issues ---
     civicReports.forEach((report) => {
       if (report.status === "completed") return;
-      const color = report.status === "claimed" ? "#f59e0b" : "#d97706";
+      const lat = Number(report.latitude);
+      const lng = Number(report.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const dest = { lat, lng };
+      const isCheckedOut = report.status === "claimed";
+
+      if (isCheckedOut && youAreHere) {
+        const guideLine = new google.maps.Polyline({
+          path: [youAreHere, dest],
+          strokeColor: "#f59e0b",
+          strokeOpacity: 0.85,
+          strokeWeight: 4,
+          icons: [
+            {
+              icon: {
+                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 4,
+                fillColor: "#f59e0b",
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeWeight: 1,
+              },
+              offset: "100%",
+            },
+          ],
+          map: mapInstance,
+          zIndex: 40,
+        });
+        overlaysRef.current.push(guideLine);
+      }
+
       const civicMarker = new google.maps.Marker({
-        position: { lat: report.latitude, lng: report.longitude },
+        position: dest,
         map: mapInstance,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 9,
-          fillColor: color,
-          fillOpacity: 0.95,
-          strokeColor: "#ffffff",
-          strokeWeight: 2,
-        },
-        title: `🏗 ${report.title}`,
+        icon: isCheckedOut
+          ? {
+              path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+              scale: 7,
+              fillColor: "#f59e0b",
+              fillOpacity: 0.95,
+              strokeColor: "#ffffff",
+              strokeWeight: 2,
+            }
+          : {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 9,
+              fillColor: "#d97706",
+              fillOpacity: 0.95,
+              strokeColor: "#ffffff",
+              strokeWeight: 2,
+            },
+        title: isCheckedOut ? `→ ${report.title}` : report.title,
+        zIndex: isCheckedOut ? 60 : 50,
       });
       overlaysRef.current.push(civicMarker);
     });
@@ -247,6 +296,7 @@ export default function MissionMap({
       const bounds = new google.maps.LatLngBounds();
       path.forEach((p) => bounds.extend(p));
       if (volunteerLocation) bounds.extend(volunteerLocation);
+      if (youAreHere) bounds.extend(youAreHere);
       if (destination) bounds.extend(destination);
       if (zone) bounds.extend({ lat: zone.latitude, lng: zone.longitude });
       mapInstance.fitBounds(bounds, 60);
@@ -269,6 +319,7 @@ export default function MissionMap({
       const bounds = new google.maps.LatLngBounds();
       bounds.extend(destination);
       if (volunteerLocation) bounds.extend(volunteerLocation);
+      if (youAreHere) bounds.extend(youAreHere);
       if (zone) {
         const circle = new google.maps.Circle({
           center: { lat: zone.latitude, lng: zone.longitude },
@@ -279,13 +330,67 @@ export default function MissionMap({
       }
       mapInstance.fitBounds(bounds, 60);
     } else if (zone) {
-      fitToIncidentZone(mapInstance, zone, volunteerLocation);
+      fitToIncidentZone(mapInstance, zone, youAreHere ?? volunteerLocation);
+    } else if (youAreHere) {
+      fitLocalArea(mapInstance, youAreHere);
     }
   }
 
+  function fitLocalArea(
+    mapInstance: google.maps.Map,
+    location: { lat: number; lng: number }
+  ) {
+    const openCivic = civicReports.filter((r) => r.status !== "completed");
+    if (openCivic.length === 0) {
+      mapInstance.setCenter(location);
+      mapInstance.setZoom(14);
+      return;
+    }
+    const bounds = new google.maps.LatLngBounds();
+    bounds.extend(location);
+    openCivic.forEach((report) => {
+      const lat = Number(report.latitude);
+      const lng = Number(report.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) bounds.extend({ lat, lng });
+    });
+    mapInstance.fitBounds(bounds, 80);
+  }
+
+  const goToMyLocation = useCallback(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    const flyTo = (loc: { lat: number; lng: number }) => {
+      setLiveLocation(loc);
+      map.panTo(loc);
+      map.setZoom(14);
+      onLocationUpdate?.(loc.lat, loc.lng);
+    };
+
+    setLocating(true);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          flyTo({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          setLocating(false);
+        },
+        () => {
+          const fallback = youAreHere ?? volunteerLocation;
+          if (fallback) flyTo(fallback);
+          setLocating(false);
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    } else {
+      const fallback = youAreHere ?? volunteerLocation;
+      if (fallback) flyTo(fallback);
+      setLocating(false);
+    }
+  }, [youAreHere, volunteerLocation, onLocationUpdate]);
+
   useEffect(() => {
     if (ready && mapInstanceRef.current) renderOverlays(mapInstanceRef.current);
-  }, [ready, mission.route_polyline, incident?.id, volunteerLocation, destination, focusSelectedIncident, civicReports]);
+  }, [ready, mission.route_polyline, incident?.id, youAreHere, destination, focusSelectedIncident, civicReports]);
 
   if (error) {
     return (
@@ -320,6 +425,18 @@ export default function MissionMap({
           </div>
         </div>
       )}
+      {(youAreHere || volunteerLocation || navigator.geolocation) && (
+        <button
+          type="button"
+          onClick={goToMyLocation}
+          disabled={locating}
+          title="Go to my location"
+          aria-label="Go to my location"
+          className="absolute top-3 right-3 z-10 flex h-9 w-9 items-center justify-center rounded-lg border border-slate-600 bg-slate-900/95 text-blue-400 shadow-lg backdrop-blur-sm transition-colors hover:bg-slate-800 hover:text-blue-300 disabled:opacity-50"
+        >
+          <LocateFixed className={`h-4 w-4 ${locating ? "animate-pulse" : ""}`} />
+        </button>
+      )}
       {/* Legend overlay */}
       <div className="absolute bottom-3 left-3 bg-slate-900/90 backdrop-blur-sm rounded-lg p-2 text-xs space-y-1">
         <div className="flex items-center gap-2">
@@ -334,10 +451,16 @@ export default function MissionMap({
           <div className="w-3 h-3 rounded-full bg-blue-500" />
           <span className="text-slate-300">Your position</span>
         </div>
-        {civicReports.length > 0 && (
+        {civicReports.some((r) => r.status === "claimed") && (
+          <div className="flex items-center gap-2">
+            <Navigation className="w-3 h-3 text-amber-400" />
+            <span className="text-slate-300">Driving to checkout</span>
+          </div>
+        )}
+        {civicReports.some((r) => r.status === "open") && (
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-amber-500" />
-            <span className="text-slate-300">Civic 311</span>
+            <span className="text-slate-300">Civic 311 open</span>
           </div>
         )}
       </div>

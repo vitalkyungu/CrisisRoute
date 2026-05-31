@@ -30,18 +30,27 @@ export default function VolunteerDashboard() {
   const initialMissionLoad = useRef(true);
   const { syncFcmTokenIfGranted } = useNotifications();
 
-  const loadCivicReports = async () => {
+  const loadCivicReports = async (lat?: number, lng?: number) => {
     const user = auth.currentUser;
-    if (!user || !volunteerLocation) return;
+    const loc =
+      lat != null && lng != null ? { lat, lng } : volunteerLocation;
+    if (!user || !loc) return;
     try {
       const [nearby, checking] = await Promise.all([
-        api.civic.nearby(volunteerLocation.lat, volunteerLocation.lng, 50),
+        api.civic.nearby(loc.lat, loc.lng, 50),
         api.civic.checkingOut(user.uid),
       ]);
-      setCivicReports([...checking, ...nearby]);
+      const byId = new Map<string, CivicReport>();
+      [...checking, ...nearby].forEach((r) => byId.set(r.id, r));
+      setCivicReports(Array.from(byId.values()));
     } catch {
       setCivicReports([]);
     }
+  };
+
+  const handleLocationUpdate = (lat: number, lng: number) => {
+    setVolunteerLocation({ lat, lng });
+    loadCivicReports(lat, lng);
   };
 
   useEffect(() => {
@@ -102,7 +111,6 @@ export default function VolunteerDashboard() {
         .map((d) => ({ id: d.id, ...d.data() }) as Incident)
         .filter((i) => i.status === "active");
       setIncidents(data);
-      if (data.length > 0) setCurrentIncident(data[0]);
     });
 
     // Listen for missions assigned to this user
@@ -414,6 +422,7 @@ export default function VolunteerDashboard() {
               destination={missionDestination}
               loadingRoute={calculatingRoute && !activeMission.route_polyline}
               civicReports={civicReports}
+              onLocationUpdate={handleLocationUpdate}
             />
           </div>
         </div>
@@ -500,6 +509,7 @@ export default function VolunteerDashboard() {
                     focusSelectedIncident
                     mapClassName="w-full h-full min-h-0 rounded-lg"
                     civicReports={civicReports}
+                    onLocationUpdate={handleLocationUpdate}
                   />
                 </div>
               </div>
@@ -591,6 +601,7 @@ export default function VolunteerDashboard() {
                       focusSelectedIncident
                       mapClassName="w-full h-full min-h-[280px] rounded-lg"
                       civicReports={civicReports}
+                      onLocationUpdate={handleLocationUpdate}
                     />
                   </div>
                   <p className="text-xs text-slate-500 mt-2 shrink-0">

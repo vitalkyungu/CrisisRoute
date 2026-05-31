@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { CheckCircle, Construction, ExternalLink, Loader2, MapPin } from "lucide-react";
+import { CheckCircle, Construction, ExternalLink, Loader2, MapPin, Navigation } from "lucide-react";
 import { auth } from "../lib/firebase";
 import { api } from "../lib/api";
+import { googleMapsDirectionsUrl } from "../lib/maps";
 import type { CivicReport } from "../types";
 
 interface CivicPanelProps {
@@ -47,7 +48,7 @@ export default function CivicPanel({ latitude, longitude, onStatsRefresh, onCivi
     setMessage("");
     try {
       await api.civic.checkOut(id, user.uid);
-      setMessage("Checked out — go inspect, then mark complete for +10 pts.");
+      setMessage("Checked out — tap the blue arrow for Google Maps directions, then mark complete.");
       await refresh();
       onCivicRefresh?.();
     } catch (e: unknown) {
@@ -75,6 +76,16 @@ export default function CivicPanel({ latitude, longitude, onStatsRefresh, onCivi
     }
   };
 
+  const openDirections = (report: CivicReport) => {
+    const dest = {
+      lat: Number(report.latitude),
+      lng: Number(report.longitude),
+    };
+    if (!Number.isFinite(dest.lat) || !Number.isFinite(dest.lng)) return;
+    const url = googleMapsDirectionsUrl(dest, { lat: latitude, lng: longitude });
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   const empty = !loading && open.length === 0 && checkingOut.length === 0;
 
   return (
@@ -85,8 +96,9 @@ export default function CivicPanel({ latitude, longitude, onStatsRefresh, onCivi
       </div>
 
       <p className="text-xs text-slate-500">
-        Amber pins on the map. Tap <strong className="text-amber-400">Check it out</strong>, inspect the
-        issue, then <strong className="text-green-400">Mark complete (+10 pts)</strong>.
+        Amber pins on the map. Tap <strong className="text-amber-400">Check it out</strong>, use{" "}
+        <strong className="text-blue-400">blue arrow</strong> to open Google Maps, then{" "}
+        <strong className="text-green-400">Mark complete (+10 pts)</strong>.
       </p>
 
       {message && (
@@ -108,21 +120,47 @@ export default function CivicPanel({ latitude, longitude, onStatsRefresh, onCivi
               </h3>
               <div className="space-y-2">
                 {checkingOut.map((r) => (
-                  <CivicCard key={r.id} report={r}>
-                    <button
-                      type="button"
-                      onClick={() => complete(r.id)}
-                      disabled={actionId === r.id}
-                      className="btn-primary text-xs mt-2 py-1.5 px-3 flex items-center gap-1 bg-green-600 hover:bg-green-700"
-                    >
-                      {actionId === r.id ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <CheckCircle className="w-3 h-3" />
-                      )}
-                      Mark complete (+10 pts)
-                    </button>
-                  </CivicCard>
+                  <div
+                    key={r.id}
+                    className="rounded-lg border border-green-800/40 bg-slate-900/50 px-3 py-2.5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-slate-200">{r.title}</p>
+                        {r.description && (
+                          <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{r.description}</p>
+                        )}
+                        <p className="text-xs text-slate-500 mt-1">{r.department || r.category}</p>
+                      </div>
+                      <span className="text-[10px] uppercase text-green-500/80 shrink-0">claimed</span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 mt-3">
+                      <button
+                        type="button"
+                        onClick={() => complete(r.id)}
+                        disabled={actionId === r.id}
+                        className="btn-primary text-xs py-2 px-3 flex items-center gap-1 bg-green-600 hover:bg-green-700"
+                      >
+                        {actionId === r.id ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <CheckCircle className="w-3 h-3" />
+                        )}
+                        Mark complete (+10 pts)
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => openDirections(r)}
+                        title="Open in Google Maps"
+                        aria-label="Open directions in Google Maps"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md transition-colors hover:bg-blue-500 active:scale-95"
+                      >
+                        <Navigation className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             </section>
